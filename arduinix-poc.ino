@@ -30,16 +30,18 @@ boolean warmedUp = false;
 
 // PWM
 unsigned long last = 0UL;
-long fadeLengthMillis = 1000;
+long fadeLengthMillis = 1000L;
 int fadeUpState = 1;
 
 // 500 Hz = 1/500 * 1M us = 2000us period
 // 10 Hz = 1/10 * 1M us = 100000us period
 // 20 Hz = 1/10 * 1M us = 50000us period
-// 62.5 Hz
-long periodMicros = 16000;
-long fadeMinMicros = 20; // 1% duty minimum
-long fadeMaxMicros = periodMicros - fadeMinMicros;
+// 62.5 Hz = 16000us period
+// Experimentation shows the minimum smooth update frequency is ~60Hz
+float freq = 60.0F;
+long periodMicros = 1000000L / freq;
+long fadeMinMicros = periodMicros / 100L; // 1% duty minimum
+long fadeMaxMicros = periodMicros; // 100% duty maximum
 
 byte seq = 0;
 
@@ -72,6 +74,13 @@ void setup()
   setCathode(false, BLANK);
   
   Serial.begin(115200);
+  
+  Serial.print("Period: ");
+  Serial.print(periodMicros, DEC);
+  Serial.print(" - fadeMinMicros: ");
+  Serial.print(fadeMinMicros, DEC);
+  Serial.print(" - fadeMaxMicros: ");
+  Serial.print(fadeMaxMicros, DEC);
 }
 
 
@@ -206,7 +215,7 @@ void loop() {
   
   int diff = now - last;
   
-  
+  displayOnTube(4, 7);
   
   /************* 
    * multiplex
@@ -234,7 +243,7 @@ void loop() {
   /************* 
    * PWM
    *************/
-   
+   /*
    if (diff >= fadeLengthMillis) {
      diff = fadeLengthMillis;
    }
@@ -283,6 +292,6 @@ void loop() {
       fadeUpState = 0;
     }
   }
-  
+  */
 }
 

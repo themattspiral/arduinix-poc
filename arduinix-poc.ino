@@ -30,11 +30,14 @@ boolean warmedUp = false;
 
 // PWM
 unsigned long last = 0UL;
-long fadeLengthMillis = 500;
+long fadeLengthMillis = 1000;
 int fadeUpState = 1;
 
 // 500 Hz = 1/500 * 1M us = 2000us period
-long periodMicros = 2000;
+// 10 Hz = 1/10 * 1M us = 100000us period
+// 20 Hz = 1/10 * 1M us = 50000us period
+// 62.5 Hz
+long periodMicros = 16000;
 long fadeMinMicros = 20; // 1% duty minimum
 long fadeMaxMicros = periodMicros - fadeMinMicros;
 
@@ -67,6 +70,8 @@ void setup()
   // initialize cathodes to 15 (blank)
   setCathode(true, BLANK);
   setCathode(false, BLANK);
+  
+  Serial.begin(115200);
 }
 
 
@@ -181,61 +186,136 @@ void countUp() {
 }
 
 
+int tubeSeq[] = {0, 1, 2, 3, 4, 5};
+int countDurationMillis = 8000;
+
 /**
  * LOOP
  *
  */
 void loop() {
+  unsigned long now = millis();
+  
   if (!warmedUp) {
     warmup();
     warmedUp = true;
+    
+    now = millis();
+    last = now;
   }
   
-  // multiplex
+  int diff = now - last;
+  
+  
+  
+  /************* 
+   * multiplex
+   *************/
   /*for (int i=0; i<6; i++) {
-    displayOnTube(i, i);
+    displayOnTube(i, tubeSeq[i]);
     delayMicroseconds(2000);
+  }
+  
+  if (diff > countDurationMillis) {
+    // reset last switch time
+    last = now;
+
+    // increment
+    for (int i=0; i<6; i++) {
+      if (tubeSeq[i] > 9) {
+        tubeSeq[i]++;
+      } else {
+        tubeSeq[i] = 0;
+      }
+    }
   }*/
   
   
-  // pwm
-  unsigned long now = millis();
-  int diff = now - last;
+  /************* 
+   * PWM
+   *************/
+   
+   if (diff >= fadeLengthMillis) {
+     diff = fadeLengthMillis;
+   }
 
   long litDurationMicros = 0L;
+  long offDurationMicros = 0L;
 
   if (fadeUpState == 1) {
     // fade up
     //litDurationMicros = fadeBaseMicros + diff;
     litDurationMicros = map(diff, 0, fadeLengthMillis, fadeMinMicros, fadeMaxMicros);
+    offDurationMicros = map(diff, 0, fadeLengthMillis, fadeMaxMicros, fadeMinMicros);
   } else {
     // fade down
     //litDurationMicros = fadeMaxMicros - diff;
     litDurationMicros = map(diff, 0, fadeLengthMillis, fadeMaxMicros, fadeMinMicros);
+    offDurationMicros = map(diff, 0, fadeLengthMillis, fadeMinMicros, fadeMaxMicros);
   }
 
-  long offDurationMicros = fadeMaxMicros - litDurationMicros;
-
-  // avoid 'negative' overflow in unsigned long, or values less than base/min
   if (litDurationMicros < fadeMinMicros) {
+    Serial.print("Corrected too small lit ");
+    Serial.println(litDurationMicros);
     litDurationMicros = fadeMinMicros;
   }
   
+  if (litDurationMicros > fadeMaxMicros) {
+    Serial.print("Corrected too large lit ");
+    Serial.println(litDurationMicros);
+    litDurationMicros = fadeMaxMicros;
+  }
+  
+  if (offDurationMicros < 0L) {
+    Serial.print("Corrected off < 0 ");
+    Serial.println(offDurationMicros);
+    offDurationMicros = 0L;
+  }
+
+ 
+  
+// TODO - uncomment
   setCathode(true, seq);
   setCathode(false, seq);
 
   digitalWrite(PIN_ANODE_1, HIGH);
   digitalWrite(PIN_ANODE_2, HIGH);
   digitalWrite(PIN_ANODE_3, HIGH);
+  /*Serial.print("ON - Diff: ");
+  Serial.print(diff, DEC);
+  Serial.print(" - Fade Up State: ");
+  Serial.print(fadeUpState, DEC);
+  Serial.print(" - Lit Duration: ");
+  Serial.print(litDurationMicros, DEC);*/
   delayMicroseconds(litDurationMicros);
 
   digitalWrite(PIN_ANODE_1, LOW);
   digitalWrite(PIN_ANODE_2, LOW);
   digitalWrite(PIN_ANODE_3, LOW);
+  /*Serial.print("  ||  OFF - Off Duration: ");
+  Serial.println(offDurationMicros, DEC);*/
   delayMicroseconds(offDurationMicros);
   
   
-  if (diff > fadeLengthMillis) {
+  
+// TEMP
+/*
+  Serial.print("ON - Diff: ");
+  Serial.print(diff, DEC);
+  Serial.print(" - Fade Up State: ");
+  Serial.print(fadeUpState, DEC);
+  Serial.print(" - Lit Duration: ");
+  Serial.println(litDurationMicros, DEC);
+  delay(litDurationMicros);
+  
+  Serial.print("OFF - Off Duration: ");
+  Serial.println(offDurationMicros, DEC);
+  Serial.println("");
+  delay(offDurationMicros);
+  */
+  
+  
+  if (diff >= fadeLengthMillis) {
     // reset last switch time
     last = now;
 
@@ -243,6 +323,7 @@ void loop() {
     if (fadeUpState == 0) {
       fadeUpState = 1;
       
+      // increase sequence number
       if (seq < 9) {
         seq++;
       } else {
@@ -252,5 +333,6 @@ void loop() {
       fadeUpState = 0;
     }
   }
+  
 }
 

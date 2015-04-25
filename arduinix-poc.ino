@@ -1,14 +1,14 @@
 /**
- * nixie-test
+ * arduinix-poc
  */
 
-// SN74141 (1)
+// Controller 1 (SN74141/K155ID1)
 byte PIN_CATHODE_0_A = 2;                
 byte PIN_CATHODE_0_B = 3;
 byte PIN_CATHODE_0_C = 4;
 byte PIN_CATHODE_0_D = 5;
 
-// SN74141 (2)
+// Controller 2 (SN74141/K155ID1)
 byte PIN_CATHODE_1_A = 6;                
 byte PIN_CATHODE_1_B = 7;
 byte PIN_CATHODE_1_C = 8;
@@ -22,6 +22,7 @@ byte PIN_ANODE_4 = 13;
 
 byte BLANK = 15;
 
+// 6 tubes, each wired to a unique combination of anode pin and cathode controller
 byte tubeAnodes[] = {1, 1, 2, 2, 3, 3};
 byte tubeCathodeCtrl0[] = {false, true, false, true, false, true};
 

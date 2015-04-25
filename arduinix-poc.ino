@@ -244,76 +244,26 @@ void loop() {
 
   if (fadeUpState == 1) {
     // fade up
-    //litDurationMicros = fadeBaseMicros + diff;
     litDurationMicros = map(diff, 0, fadeLengthMillis, fadeMinMicros, fadeMaxMicros);
     offDurationMicros = map(diff, 0, fadeLengthMillis, fadeMaxMicros, fadeMinMicros);
   } else {
     // fade down
-    //litDurationMicros = fadeMaxMicros - diff;
     litDurationMicros = map(diff, 0, fadeLengthMillis, fadeMaxMicros, fadeMinMicros);
     offDurationMicros = map(diff, 0, fadeLengthMillis, fadeMinMicros, fadeMaxMicros);
   }
-
-  if (litDurationMicros < fadeMinMicros) {
-    Serial.print("Corrected too small lit ");
-    Serial.println(litDurationMicros);
-    litDurationMicros = fadeMinMicros;
-  }
   
-  if (litDurationMicros > fadeMaxMicros) {
-    Serial.print("Corrected too large lit ");
-    Serial.println(litDurationMicros);
-    litDurationMicros = fadeMaxMicros;
-  }
-  
-  if (offDurationMicros < 0L) {
-    Serial.print("Corrected off < 0 ");
-    Serial.println(offDurationMicros);
-    offDurationMicros = 0L;
-  }
-
- 
-  
-// TODO - uncomment
   setCathode(true, seq);
   setCathode(false, seq);
 
   digitalWrite(PIN_ANODE_1, HIGH);
   digitalWrite(PIN_ANODE_2, HIGH);
   digitalWrite(PIN_ANODE_3, HIGH);
-  /*Serial.print("ON - Diff: ");
-  Serial.print(diff, DEC);
-  Serial.print(" - Fade Up State: ");
-  Serial.print(fadeUpState, DEC);
-  Serial.print(" - Lit Duration: ");
-  Serial.print(litDurationMicros, DEC);*/
   delayMicroseconds(litDurationMicros);
 
   digitalWrite(PIN_ANODE_1, LOW);
   digitalWrite(PIN_ANODE_2, LOW);
   digitalWrite(PIN_ANODE_3, LOW);
-  /*Serial.print("  ||  OFF - Off Duration: ");
-  Serial.println(offDurationMicros, DEC);*/
   delayMicroseconds(offDurationMicros);
-  
-  
-  
-// TEMP
-/*
-  Serial.print("ON - Diff: ");
-  Serial.print(diff, DEC);
-  Serial.print(" - Fade Up State: ");
-  Serial.print(fadeUpState, DEC);
-  Serial.print(" - Lit Duration: ");
-  Serial.println(litDurationMicros, DEC);
-  delay(litDurationMicros);
-  
-  Serial.print("OFF - Off Duration: ");
-  Serial.println(offDurationMicros, DEC);
-  Serial.println("");
-  delay(offDurationMicros);
-  */
-  
   
   if (diff >= fadeLengthMillis) {
     // reset last switch time

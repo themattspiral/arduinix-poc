@@ -23,28 +23,45 @@ byte PIN_ANODE_4 = 13;
 byte BLANK = 15;
 
 // 6 tubes, each wired to a unique combination of anode pin and cathode controller
-byte tubeAnodes[] = {1, 1, 2, 2, 3, 3};
-byte tubeCathodeCtrl0[] = {false, true, false, true, false, true};
+byte TUBE_COUNT = 6;
+byte TUBE_ANODES[] = {1, 1, 2, 2, 3, 3};
+byte TUBE_CATHODE_CTRL_0[] = {false, true, false, true, false, true};
 
 boolean warmedUp = false;
 
 // PWM
 unsigned long last = 0UL;
-long fadeLengthMillis = 1000L;
-int fadeUpState = 1;
+long fadeLengthMillis = 3000L;
+byte fadeUpState = 1;
 
 // 500 Hz = 1/500 * 1M us = 2000us period
 // 10 Hz = 1/10 * 1M us = 100000us period
 // 20 Hz = 1/10 * 1M us = 50000us period
 // 62.5 Hz = 16000us period
 // Experimentation shows the minimum smooth update frequency is ~60Hz
-float freq = 60.0F;
-long periodMicros = 1000000L / freq;
-long fadeMinMicros = periodMicros / 100L; // 1% duty minimum
-long fadeMaxMicros = periodMicros; // 100% duty maximum
+long freq = 62L;
+long periodMicros = 0L;
+long fadeMinMicros = 0L;
+long fadeMaxMicros = 0L;
 
 byte seq = 0;
 
+
+void calculatePwmVals() {
+  periodMicros = 1000000L / freq;
+  fadeMinMicros = periodMicros / 100L; // 1% duty minimum
+  fadeMaxMicros = periodMicros; // 100% duty maximum
+  
+  Serial.print("PWM Init - Frequency: ");
+  Serial.print(freq, DEC);
+  Serial.print(" - Period: ");
+  Serial.print(periodMicros, DEC);
+  Serial.print(" - fadeMinMicros: ");
+  Serial.print(fadeMinMicros, DEC);
+  Serial.print(" - fadeMaxMicros: ");
+  Serial.print(fadeMaxMicros, DEC);
+  Serial.println("");
+}
 
 void setup() 
 {
@@ -75,12 +92,8 @@ void setup()
   
   Serial.begin(115200);
   
-  Serial.print("Period: ");
-  Serial.print(periodMicros, DEC);
-  Serial.print(" - fadeMinMicros: ");
-  Serial.print(fadeMinMicros, DEC);
-  Serial.print(" - fadeMaxMicros: ");
-  Serial.print(fadeMaxMicros, DEC);
+  // initialize PWM Values
+  calculatePwmVals();
 }
 
 
@@ -120,9 +133,9 @@ void setCathode(boolean ctrl0, byte displayNumber) {
   }
 }
 
-void displayOnTube(byte tube, byte displayNumber) {
-  byte anode = tubeAnodes[tube];
-  boolean cathodeCtrl0 = tubeCathodeCtrl0[tube];
+void displayOnTube(byte tubeIndex, byte displayNumber) {
+  byte anode = TUBE_ANODES[tubeIndex];
+  boolean cathodeCtrl0 = TUBE_CATHODE_CTRL_0[tubeIndex];
   
   switch(anode) {
     case 1:
@@ -142,8 +155,8 @@ void displayOnTube(byte tube, byte displayNumber) {
       break;
   }
   
-  setCathode(cathodeCtrl0, displayNumber);
   setCathode(!cathodeCtrl0, BLANK);
+  setCathode(cathodeCtrl0, displayNumber);
 }
 
 
@@ -152,33 +165,64 @@ void warmup() {
   digitalWrite(PIN_ANODE_2, HIGH);
   digitalWrite(PIN_ANODE_3, HIGH);
   
+  // blink '0' three times
   for (int i=0; i<2; i++) {
     setCathode(true, 0);
     setCathode(false, 0);
-    delay(750);
+    delay(1500);
     setCathode(true, BLANK);
     setCathode(false, BLANK);
-    delay(100);
+    delay(300);
   }
   
-  for (int c=0; c<2; c++) {
-    for (int i=0; i<10; i++) {
-      setCathode(true, i);
-      setCathode(false, i);
-      delay(100);
-    }
-  }
+  setCathode(true, BLANK);
+  setCathode(false, BLANK);
+  delay(300);
   
-  for (int c=0; c<5; c++) {
-    for (int i=0; i<10; i++) {
-      setCathode(true, i);
-      setCathode(false, i);
-      delay(25);
+  // cycle across tubes, starting with 9 down to 0
+  int seq = 9;
+  for(int i=0; i<TUBE_COUNT; i++) {
+    displayOnTube(i, seq);
+    delay(65);
+    
+    if (i == TUBE_COUNT-1 && seq > 0) {
+      i = -1;
+      seq--;
     }
   }
   
   setCathode(true, BLANK);
   setCathode(false, BLANK);
+  digitalWrite(PIN_ANODE_1, HIGH);
+  digitalWrite(PIN_ANODE_2, HIGH);
+  digitalWrite(PIN_ANODE_3, HIGH);
+  delay(300);
+  
+  // count 0-9 slowly, 2 times
+  for (int c=0; c<2; c++) {
+    for (int i=0; i<10; i++) {
+      setCathode(true, i);
+      setCathode(false, i);
+      delay(150);
+    }
+  }
+  
+  setCathode(true, BLANK);
+  setCathode(false, BLANK);
+  delay(300);
+  
+  // count 0-9 quickly, 5 times
+  for (int c=0; c<5; c++) {
+    for (int i=0; i<10; i++) {
+      setCathode(true, i);
+      setCathode(false, i);
+      delay(30);
+    }
+  }
+  
+  setCathode(true, BLANK);
+  setCathode(false, BLANK);
+  delay(300);
   
   digitalWrite(PIN_ANODE_1, LOW);
   digitalWrite(PIN_ANODE_2, LOW);
@@ -196,17 +240,29 @@ void countUp() {
 
 
 int tubeSeq[] = {0, 1, 2, 3, 4, 5};
-int countDurationMillis = 8000;
+int countDurationMillis = 2000;
 
 /**
  * LOOP
  *
  */
 void loop() {
+  if (Serial.available() > 0) {
+    int newFreq = Serial.parseInt();
+    //byte newFreq = Serial.read();
+    
+    Serial.print("Entered: ");
+    Serial.println(newFreq);
+    if (newFreq > 0 && newFreq < 10000) {
+      freq = newFreq;
+      calculatePwmVals();
+    }
+  }
+  
   unsigned long now = millis();
   
   if (!warmedUp) {
-    warmup();
+    //warmup();
     warmedUp = true;
     
     now = millis();
@@ -215,12 +271,11 @@ void loop() {
   
   int diff = now - last;
   
-  displayOnTube(4, 7);
-  
   /************* 
    * multiplex
    *************/
-  /*for (int i=0; i<6; i++) {
+  
+  for (int i=0; i<6; i++) {
     displayOnTube(i, tubeSeq[i]);
     delayMicroseconds(2000);
   }
@@ -231,13 +286,13 @@ void loop() {
 
     // increment
     for (int i=0; i<6; i++) {
-      if (tubeSeq[i] > 9) {
-        tubeSeq[i]++;
-      } else {
+      if (tubeSeq[i] == 9) {
         tubeSeq[i] = 0;
+      } else {
+        tubeSeq[i]++;
       }
     }
-  }*/
+  }
   
   
   /************* 
@@ -293,5 +348,6 @@ void loop() {
     }
   }
   */
+  
 }
 

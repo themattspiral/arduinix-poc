@@ -27,39 +27,40 @@ byte TUBE_COUNT = 6;
 byte TUBE_ANODES[] = {1, 1, 2, 2, 3, 3};
 byte TUBE_CATHODE_CTRL_0[] = {false, true, false, true, false, true};
 
-boolean warmedUp = false;
+boolean WARMED_UP = false;
 
-// PWM
-unsigned long last = 0UL;
-long fadeLengthMillis = 3000L;
-byte fadeUpState = 1;
+// timing
+unsigned long LAST_TS = 0UL;
+long PWM_FADE_LENGTH_MS = 3000L;
+byte PWM_FADE_UP_STATE = 1;
 
 // 500 Hz = 1/500 * 1M us = 2000us period
 // 10 Hz = 1/10 * 1M us = 100000us period
 // 20 Hz = 1/10 * 1M us = 50000us period
 // 62.5 Hz = 16000us period
 // Experimentation shows the minimum smooth update frequency is ~60Hz
-long freq = 62L;
-long periodMicros = 0L;
-long fadeMinMicros = 0L;
-long fadeMaxMicros = 0L;
+long FREQ = 62L;
+long PERIOD_US = 0L;
 
-byte seq = 0;
+long PWM_FADE_MIN_US = 0L;
+long PWM_FADE_MAX_US = 0L;
+
+byte SEQ = 0;
 
 
 void calculatePwmVals() {
-  periodMicros = 1000000L / freq;
-  fadeMinMicros = periodMicros / 100L; // 1% duty minimum
-  fadeMaxMicros = periodMicros; // 100% duty maximum
+  PERIOD_US = 1000000L / FREQ;
+  PWM_FADE_MIN_US = PERIOD_US / 100L; // 1% duty minimum
+  PWM_FADE_MAX_US = PERIOD_US; // 100% duty maximum
   
   Serial.print("PWM Init - Frequency: ");
-  Serial.print(freq, DEC);
+  Serial.print(FREQ, DEC);
   Serial.print(" - Period: ");
-  Serial.print(periodMicros, DEC);
-  Serial.print(" - fadeMinMicros: ");
-  Serial.print(fadeMinMicros, DEC);
-  Serial.print(" - fadeMaxMicros: ");
-  Serial.print(fadeMaxMicros, DEC);
+  Serial.print(PERIOD_US, DEC);
+  Serial.print(" - PWM_FADE_MIN_US: ");
+  Serial.print(PWM_FADE_MIN_US, DEC);
+  Serial.print(" - PWM_FADE_MAX_US: ");
+  Serial.print(PWM_FADE_MAX_US, DEC);
   Serial.println("");
 }
 
@@ -180,14 +181,14 @@ void warmup() {
   delay(300);
   
   // cycle across tubes, starting with 9 down to 0
-  int seq = 9;
+  int SEQ = 9;
   for(int i=0; i<TUBE_COUNT; i++) {
-    displayOnTube(i, seq);
+    displayOnTube(i, SEQ);
     delay(65);
     
-    if (i == TUBE_COUNT-1 && seq > 0) {
+    if (i == TUBE_COUNT-1 && SEQ > 0) {
       i = -1;
-      seq--;
+      SEQ--;
     }
   }
   
@@ -231,9 +232,9 @@ void warmup() {
 
 
 void countUp() {
-  for (int seq=0; seq<10; seq++) {
-    setCathode(true, seq);
-    setCathode(false, seq);
+  for (int SEQ=0; SEQ<10; SEQ++) {
+    setCathode(true, SEQ);
+    setCathode(false, SEQ);
     delay(500);
   }
 }
@@ -254,22 +255,22 @@ void loop() {
     Serial.print("Entered: ");
     Serial.println(newFreq);
     if (newFreq > 0 && newFreq < 10000) {
-      freq = newFreq;
+      FREQ = newFreq;
       calculatePwmVals();
     }
   }
   
   unsigned long now = millis();
   
-  if (!warmedUp) {
+  if (!WARMED_UP) {
     //warmup();
-    warmedUp = true;
+    WARMED_UP = true;
     
     now = millis();
-    last = now;
+    LAST_TS = now;
   }
   
-  int diff = now - last;
+  int diff = now - LAST_TS;
   
   /************* 
    * multiplex
@@ -282,7 +283,7 @@ void loop() {
   
   if (diff > countDurationMillis) {
     // reset last switch time
-    last = now;
+    LAST_TS = now;
 
     // increment
     for (int i=0; i<6; i++) {
@@ -299,25 +300,25 @@ void loop() {
    * PWM
    *************/
    /*
-   if (diff >= fadeLengthMillis) {
-     diff = fadeLengthMillis;
+   if (diff >= PWM_FADE_LENGTH_MS) {
+     diff = PWM_FADE_LENGTH_MS;
    }
 
   long litDurationMicros = 0L;
   long offDurationMicros = 0L;
 
-  if (fadeUpState == 1) {
+  if (PWM_FADE_UP_STATE == 1) {
     // fade up
-    litDurationMicros = map(diff, 0, fadeLengthMillis, fadeMinMicros, fadeMaxMicros);
-    offDurationMicros = map(diff, 0, fadeLengthMillis, fadeMaxMicros, fadeMinMicros);
+    litDurationMicros = map(diff, 0, PWM_FADE_LENGTH_MS, PWM_FADE_MIN_US, PWM_FADE_MAX_US);
+    offDurationMicros = map(diff, 0, PWM_FADE_LENGTH_MS, PWM_FADE_MAX_US, PWM_FADE_MIN_US);
   } else {
     // fade down
-    litDurationMicros = map(diff, 0, fadeLengthMillis, fadeMaxMicros, fadeMinMicros);
-    offDurationMicros = map(diff, 0, fadeLengthMillis, fadeMinMicros, fadeMaxMicros);
+    litDurationMicros = map(diff, 0, PWM_FADE_LENGTH_MS, PWM_FADE_MAX_US, PWM_FADE_MIN_US);
+    offDurationMicros = map(diff, 0, PWM_FADE_LENGTH_MS, PWM_FADE_MIN_US, PWM_FADE_MAX_US);
   }
   
-  setCathode(true, seq);
-  setCathode(false, seq);
+  setCathode(true, SEQ);
+  setCathode(false, SEQ);
 
   digitalWrite(PIN_ANODE_1, HIGH);
   digitalWrite(PIN_ANODE_2, HIGH);
@@ -329,22 +330,22 @@ void loop() {
   digitalWrite(PIN_ANODE_3, LOW);
   delayMicroseconds(offDurationMicros);
   
-  if (diff >= fadeLengthMillis) {
+  if (diff >= PWM_FADE_LENGTH_MS) {
     // reset last switch time
-    last = now;
+    LAST_TS = now;
 
     // swap fade direction
-    if (fadeUpState == 0) {
-      fadeUpState = 1;
+    if (PWM_FADE_UP_STATE == 0) {
+      PWM_FADE_UP_STATE = 1;
       
       // increase sequence number
-      if (seq < 9) {
-        seq++;
+      if (SEQ < 9) {
+        SEQ++;
       } else {
-        seq = 0;
+        SEQ = 0;
       }
     } else {
-      fadeUpState = 0;
+      PWM_FADE_UP_STATE = 0;
     }
   }
   */

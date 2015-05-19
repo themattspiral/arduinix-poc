@@ -45,13 +45,30 @@ long PERIOD_US = 0L;
 long PWM_FADE_MIN_US = 0L;
 long PWM_FADE_MAX_US = 0L;
 
+long MUX_PERIOD_US = 0L;
+long MUX_ON_US = 0L;
+long MUX_OFF_US = 0L;
+
 byte SEQ = 0;
 
 
 void calculatePwmVals() {
   PERIOD_US = 1000000L / FREQ;
-  PWM_FADE_MIN_US = PERIOD_US / 100L; // 1% duty minimum
+  
+  PWM_FADE_MIN_US = PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty minimum)
   PWM_FADE_MAX_US = PERIOD_US; // 100% duty maximum
+  
+  long adjustedFreq = FREQ * TUBE_COUNT;
+  MUX_PERIOD_US = 1000000L / adjustedFreq;
+  MUX_ON_US = MUX_PERIOD_US; // (100% duty)
+  //MUX_ON_US = MUX_PERIOD_US / 2L; // (1/2 = .5 = 50% duty)
+  //MUX_ON_US = MUX_PERIOD_US / 5L; // (1/5 = .2 = 20% duty)
+  MUX_OFF_US = MUX_PERIOD_US - MUX_ON_US;
+  
+  long muxMinOffUs = MUX_PERIOD_US / 100L;
+  if (MUX_OFF_US < muxMinOffUs) {
+    MUX_OFF_US = muxMinOffUs;
+  }
   
   Serial.print("PWM Init - Frequency: ");
   Serial.print(FREQ, DEC);
@@ -61,6 +78,18 @@ void calculatePwmVals() {
   Serial.print(PWM_FADE_MIN_US, DEC);
   Serial.print(" - PWM_FADE_MAX_US: ");
   Serial.print(PWM_FADE_MAX_US, DEC);
+  Serial.println("");
+  
+  Serial.print("MUX tube-count adj. freq: ");
+  Serial.print(adjustedFreq, DEC);
+  Serial.print(" - MUX period: ");
+  Serial.print(MUX_PERIOD_US, DEC);
+  Serial.print(" (full ");
+  Serial.print((MUX_PERIOD_US * TUBE_COUNT), DEC);
+  Serial.print(") - MUX_ON_US: ");
+  Serial.print(MUX_ON_US, DEC);
+  Serial.print(" - MUX_OFF_US: ");
+  Serial.print(MUX_OFF_US, DEC);
   Serial.println("");
 }
 
@@ -278,7 +307,11 @@ void loop() {
   
   for (int i=0; i<6; i++) {
     displayOnTube(i, tubeSeq[i]);
-    delayMicroseconds(2000);
+    //delayMicroseconds(2000);
+    delayMicroseconds(MUX_ON_US);
+    
+    displayOnTube(i, BLANK);
+    delayMicroseconds(MUX_OFF_US);
   }
   
   if (diff > countDurationMillis) {

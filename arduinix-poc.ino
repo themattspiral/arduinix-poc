@@ -272,6 +272,11 @@ void countUp() {
 int tubeSeq[] = {0, 1, 2, 3, 4, 5};
 int countDurationMillis = 2000;
 
+int muxDemoStepUpDurationMillis = 6000;
+int muxDemoStepUpDelayMs[] = {500, 80, 20, 2};
+int muxDemoStepUpRuns[] = {4, 15, 80, 400};
+int muxDemoStep = 0;
+
 /**
  * LOOP
  *
@@ -291,6 +296,10 @@ void loop() {
   
   unsigned long now = millis();
   
+  /************* 
+   * warmup
+   *************/
+   
   if (!WARMED_UP) {
     //warmup();
     WARMED_UP = true;
@@ -302,16 +311,46 @@ void loop() {
   int diff = now - LAST_TS;
   
   /************* 
-   * multiplex
-   *************/
+  * basic count up
+  *************/
+  digitalWrite(PIN_ANODE_1, HIGH);
+  digitalWrite(PIN_ANODE_2, HIGH);
+  digitalWrite(PIN_ANODE_3, HIGH);
   
+  for (int i=0; i<10; i++) {
+    setCathode(true, i);
+    setCathode(false, i);
+    delay(1000);
+  }
+    
+
+
+  /************* 
+  * multiplex step up
+  *************/
+  /*
+  for (int r=0; r<muxDemoStepUpRuns[muxDemoStep]; r++) {
+    for (int i=0; i<6; i++) {
+      displayOnTube(i, tubeSeq[i]);
+      delay(muxDemoStepUpDelayMs[muxDemoStep]);
+    } 
+  }
+  
+  // increment step
+  muxDemoStep++;
+  if (muxDemoStep > 3) {
+    muxDemoStep = 0;
+  }
+  Serial.print(muxDemoStep);
+  */
+  
+  /************* 
+  * multiplex 
+  *************/
+  /*
   for (int i=0; i<6; i++) {
     displayOnTube(i, tubeSeq[i]);
-    //delayMicroseconds(2000);
-    delayMicroseconds(MUX_ON_US);
-    
-    displayOnTube(i, BLANK);
-    delayMicroseconds(MUX_OFF_US);
+    delayMicroseconds(2000);
   }
   
   if (diff > countDurationMillis) {
@@ -327,7 +366,7 @@ void loop() {
       }
     }
   }
-  
+  */
   
   /************* 
    * PWM
@@ -379,6 +418,34 @@ void loop() {
       }
     } else {
       PWM_FADE_UP_STATE = 0;
+    }
+  }
+  */
+  
+  /************* 
+  * multiplex + PWM
+  *************/
+  /*
+  for (int i=0; i<6; i++) {
+    displayOnTube(i, tubeSeq[i]);
+    //delayMicroseconds(2000);
+    delayMicroseconds(MUX_ON_US);
+    
+    displayOnTube(i, BLANK);
+    delayMicroseconds(MUX_OFF_US);
+  }
+  
+  if (diff > countDurationMillis) {
+    // reset last switch time
+    LAST_TS = now;
+
+    // increment
+    for (int i=0; i<6; i++) {
+      if (tubeSeq[i] == 9) {
+        tubeSeq[i] = 0;
+      } else {
+        tubeSeq[i]++;
+      }
     }
   }
   */

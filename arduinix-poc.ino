@@ -39,15 +39,16 @@ byte PWM_FADE_UP_STATE = 1;
 // 20 Hz = 1/10 * 1M us = 50000us period
 // 62.5 Hz = 16000us period
 // Experimentation shows the minimum smooth update frequency is ~60Hz
-long FREQ = 62L;
+
+long FREQ = 120L;
 long PERIOD_US = 0L;
 
 long PWM_FADE_MIN_US = 0L;
 long PWM_FADE_MAX_US = 0L;
 
 long MUX_PERIOD_US = 0L;
-long MUX_ON_US = 0L;
-long MUX_OFF_US = 0L;
+long MUX_FADE_MIN_US = 0L;
+long MUX_FADE_MAX_US = 0L;
 
 byte SEQ = 0;
 
@@ -60,15 +61,9 @@ void calculatePwmVals() {
   
   long adjustedFreq = FREQ * TUBE_COUNT;
   MUX_PERIOD_US = 1000000L / adjustedFreq;
-  MUX_ON_US = MUX_PERIOD_US; // (100% duty)
-  //MUX_ON_US = MUX_PERIOD_US / 2L; // (1/2 = .5 = 50% duty)
-  //MUX_ON_US = MUX_PERIOD_US / 5L; // (1/5 = .2 = 20% duty)
-  MUX_OFF_US = MUX_PERIOD_US - MUX_ON_US;
+  MUX_FADE_MIN_US = MUX_PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty)
+  MUX_FADE_MAX_US = MUX_PERIOD_US; // (100% duty)
   
-  long muxMinOffUs = MUX_PERIOD_US / 100L;
-  if (MUX_OFF_US < muxMinOffUs) {
-    MUX_OFF_US = muxMinOffUs;
-  }
   
   Serial.print("PWM Init - Frequency: ");
   Serial.print(FREQ, DEC);
@@ -86,10 +81,11 @@ void calculatePwmVals() {
   Serial.print(MUX_PERIOD_US, DEC);
   Serial.print(" (full ");
   Serial.print((MUX_PERIOD_US * TUBE_COUNT), DEC);
-  Serial.print(") - MUX_ON_US: ");
-  Serial.print(MUX_ON_US, DEC);
-  Serial.print(" - MUX_OFF_US: ");
-  Serial.print(MUX_OFF_US, DEC);
+  Serial.print(") - MUX_FADE_MIN_US: ");
+  Serial.print(MUX_FADE_MIN_US, DEC);
+  Serial.print(" - MUX_FADE_MAX_US: ");
+  Serial.print(MUX_FADE_MAX_US, DEC);
+  
   Serial.println("");
 }
 
@@ -313,6 +309,7 @@ void loop() {
   /************* 
   * basic count up
   *************/
+  /*
   digitalWrite(PIN_ANODE_1, HIGH);
   digitalWrite(PIN_ANODE_2, HIGH);
   digitalWrite(PIN_ANODE_3, HIGH);
@@ -322,7 +319,7 @@ void loop() {
     setCathode(false, i);
     delay(1000);
   }
-    
+  */  
 
 
   /************* 
@@ -425,21 +422,45 @@ void loop() {
   /************* 
   * multiplex + PWM
   *************/
-  /*
-  for (int i=0; i<6; i++) {
-    displayOnTube(i, tubeSeq[i]);
-    //delayMicroseconds(2000);
-    delayMicroseconds(MUX_ON_US);
-    
-    displayOnTube(i, BLANK);
-    delayMicroseconds(MUX_OFF_US);
+  
+  // correct for maximum
+  if (diff >= countDurationMillis) {
+    diff = countDurationMillis;
   }
   
-  if (diff > countDurationMillis) {
+  long litDurationMicros = 0L;
+  long offDurationMicros = 0L;
+
+  // map time difference (from last direction switch) to equivalent-scale on/off durations
+  if (PWM_FADE_UP_STATE == 1) {
+    // fade up
+    litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+    offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+  } else {
+    // fade down
+    litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+    offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+  }
+  
+  // multiplex the on/off for pwm on each tube
+  for (int i=0; i<6; i++) {
+    displayOnTube(i, tubeSeq[i]);
+    delayMicroseconds(litDurationMicros);
+    
+    displayOnTube(i, BLANK);
+    delayMicroseconds(offDurationMicros);
+  }
+  
+  if (diff >= countDurationMillis) {
+    
     // reset last switch time
     LAST_TS = now;
 
-    // increment
+    // swap fade direction
+    if (PWM_FADE_UP_STATE == 0) {
+      PWM_FADE_UP_STATE = 1;
+      
+    // increment display number on switch to new fade up cycle
     for (int i=0; i<6; i++) {
       if (tubeSeq[i] == 9) {
         tubeSeq[i] = 0;
@@ -447,8 +468,11 @@ void loop() {
         tubeSeq[i]++;
       }
     }
+    } else {
+      PWM_FADE_UP_STATE = 0;
+    }
   }
-  */
+  
   
 }
 

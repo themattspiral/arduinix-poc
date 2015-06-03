@@ -20,8 +20,9 @@ byte PIN_ANODE_2 = 11;
 byte PIN_ANODE_3 = 12;
 byte PIN_ANODE_4 = 13;
 
-byte BLANK = 15;
+byte BLANK_DISPLAY = 15;
 
+// TUBE DEFINITIONS
 // 6 tubes, each wired to a unique combination of anode pin and cathode controller
 byte TUBE_COUNT = 6;
 byte TUBE_ANODES[] = {1, 1, 2, 2, 3, 3};
@@ -51,6 +52,16 @@ long MUX_FADE_MIN_US = 0L;
 long MUX_FADE_MAX_US = 0L;
 
 byte SEQ = 0;
+
+
+int tubeSeq[] = {0, 1, 2, 3, 4, 5};
+int countDurationMillis = 2000;
+
+int muxDemoStepUpDurationMillis = 6000;
+int muxDemoStepUpDelayMs[] = {500, 80, 20, 2};
+int muxDemoStepUpRuns[] = {4, 15, 80, 400};
+int muxDemoStep = 0;
+
 
 
 void calculatePwmVals() {
@@ -113,8 +124,8 @@ void setup()
   digitalWrite(PIN_ANODE_4, LOW);
   
   // initialize cathodes to 15 (blank)
-  setCathode(true, BLANK);
-  setCathode(false, BLANK);
+  setCathode(true, BLANK_DISPLAY);
+  setCathode(false, BLANK_DISPLAY);
   
   Serial.begin(115200);
   
@@ -159,29 +170,37 @@ void setCathode(boolean ctrl0, byte displayNumber) {
   }
 }
 
-void displayOnTube(byte tubeIndex, byte displayNumber) {
+void displayOnTube(byte tubeIndex, byte displayNumber, boolean exclusive) {
   byte anode = TUBE_ANODES[tubeIndex];
   boolean cathodeCtrl0 = TUBE_CATHODE_CTRL_0[tubeIndex];
   
   switch(anode) {
     case 1:
-      digitalWrite(PIN_ANODE_2, LOW);
-      digitalWrite(PIN_ANODE_3, LOW);
+      if (exclusive) {
+        digitalWrite(PIN_ANODE_2, LOW);
+        digitalWrite(PIN_ANODE_3, LOW);
+      }
       digitalWrite(PIN_ANODE_1, HIGH);
       break;
     case 2:
-      digitalWrite(PIN_ANODE_1, LOW);
-      digitalWrite(PIN_ANODE_3, LOW);
+      if (exclusive) {
+        digitalWrite(PIN_ANODE_1, LOW);
+        digitalWrite(PIN_ANODE_3, LOW);
+      }
       digitalWrite(PIN_ANODE_2, HIGH);
       break;
     case 3:
-      digitalWrite(PIN_ANODE_1, LOW);
-      digitalWrite(PIN_ANODE_2, LOW);
+      if (exclusive) {
+        digitalWrite(PIN_ANODE_1, LOW);
+        digitalWrite(PIN_ANODE_2, LOW);
+      }
       digitalWrite(PIN_ANODE_3, HIGH);
       break;
   }
   
-  setCathode(!cathodeCtrl0, BLANK);
+  if (exclusive) {
+    setCathode(!cathodeCtrl0, BLANK_DISPLAY);
+  }
   setCathode(cathodeCtrl0, displayNumber);
 }
 
@@ -196,19 +215,19 @@ void warmup() {
     setCathode(true, 0);
     setCathode(false, 0);
     delay(1500);
-    setCathode(true, BLANK);
-    setCathode(false, BLANK);
+    setCathode(true, BLANK_DISPLAY);
+    setCathode(false, BLANK_DISPLAY);
     delay(300);
   }
   
-  setCathode(true, BLANK);
-  setCathode(false, BLANK);
+  setCathode(true, BLANK_DISPLAY);
+  setCathode(false, BLANK_DISPLAY);
   delay(300);
   
   // cycle across tubes, starting with 9 down to 0
   int SEQ = 9;
   for(int i=0; i<TUBE_COUNT; i++) {
-    displayOnTube(i, SEQ);
+    displayOnTube(i, SEQ, true);
     delay(65);
     
     if (i == TUBE_COUNT-1 && SEQ > 0) {
@@ -217,8 +236,8 @@ void warmup() {
     }
   }
   
-  setCathode(true, BLANK);
-  setCathode(false, BLANK);
+  setCathode(true, BLANK_DISPLAY);
+  setCathode(false, BLANK_DISPLAY);
   digitalWrite(PIN_ANODE_1, HIGH);
   digitalWrite(PIN_ANODE_2, HIGH);
   digitalWrite(PIN_ANODE_3, HIGH);
@@ -233,8 +252,8 @@ void warmup() {
     }
   }
   
-  setCathode(true, BLANK);
-  setCathode(false, BLANK);
+  setCathode(true, BLANK_DISPLAY);
+  setCathode(false, BLANK_DISPLAY);
   delay(300);
   
   // count 0-9 quickly, 5 times
@@ -246,8 +265,8 @@ void warmup() {
     }
   }
   
-  setCathode(true, BLANK);
-  setCathode(false, BLANK);
+  setCathode(true, BLANK_DISPLAY);
+  setCathode(false, BLANK_DISPLAY);
   delay(300);
   
   digitalWrite(PIN_ANODE_1, LOW);
@@ -264,14 +283,6 @@ void countUp() {
   }
 }
 
-
-int tubeSeq[] = {0, 1, 2, 3, 4, 5};
-int countDurationMillis = 2000;
-
-int muxDemoStepUpDurationMillis = 6000;
-int muxDemoStepUpDelayMs[] = {500, 80, 20, 2};
-int muxDemoStepUpRuns[] = {4, 15, 80, 400};
-int muxDemoStep = 0;
 
 /**
  * LOOP
@@ -328,7 +339,7 @@ void loop() {
   /*
   for (int r=0; r<muxDemoStepUpRuns[muxDemoStep]; r++) {
     for (int i=0; i<6; i++) {
-      displayOnTube(i, tubeSeq[i]);
+      displayOnTube(i, tubeSeq[i], true);
       delay(muxDemoStepUpDelayMs[muxDemoStep]);
     } 
   }
@@ -346,7 +357,7 @@ void loop() {
   *************/
   /*
   for (int i=0; i<6; i++) {
-    displayOnTube(i, tubeSeq[i]);
+    displayOnTube(i, tubeSeq[i], true);
     delayMicroseconds(2000);
   }
   
@@ -444,10 +455,10 @@ void loop() {
   
   // multiplex the on/off for pwm on each tube
   for (int i=0; i<6; i++) {
-    displayOnTube(i, tubeSeq[i]);
+    displayOnTube(i, tubeSeq[i], true);
     delayMicroseconds(litDurationMicros);
     
-    displayOnTube(i, BLANK);
+    displayOnTube(i, BLANK_DISPLAY, true);
     delayMicroseconds(offDurationMicros);
   }
   
@@ -460,14 +471,14 @@ void loop() {
     if (PWM_FADE_UP_STATE == 0) {
       PWM_FADE_UP_STATE = 1;
       
-    // increment display number on switch to new fade up cycle
-    for (int i=0; i<6; i++) {
-      if (tubeSeq[i] == 9) {
-        tubeSeq[i] = 0;
-      } else {
-        tubeSeq[i]++;
+      // increment display number on switch to new fade up cycle
+      for (int i=0; i<6; i++) {
+        if (tubeSeq[i] == 9) {
+          tubeSeq[i] = 0;
+        } else {
+          tubeSeq[i]++;
+        }
       }
-    }
     } else {
       PWM_FADE_UP_STATE = 0;
     }

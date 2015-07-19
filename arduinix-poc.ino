@@ -1,5 +1,6 @@
 /**
  * arduinix-poc
+ *
  */
 
 // Controller 1 (SN74141/K155ID1)
@@ -31,7 +32,7 @@ byte TUBE_CATHODE_CTRL_0[] = {false, true, false, true, false, true};
 boolean WARMED_UP = false;
 
 // timing
-unsigned long LAST_TS = 0UL;
+unsigned long LAST_TS = 0UL;      // last timestamp
 long PWM_FADE_LENGTH_MS = 3000L;
 byte PWM_FADE_UP_STATE = 1;
 
@@ -41,7 +42,7 @@ byte PWM_FADE_UP_STATE = 1;
 // 62.5 Hz = 16000us period
 // Experimentation shows the minimum smooth update frequency is ~60Hz
 
-long FREQ = 120L;
+long FREQ_HZ = 120L;
 long PERIOD_US = 0L;
 
 long PWM_FADE_MIN_US = 0L;
@@ -65,19 +66,19 @@ int muxDemoStep = 0;
 
 
 void calculatePwmVals() {
-  PERIOD_US = 1000000L / FREQ;
+  PERIOD_US = 1000000L / FREQ_HZ;
   
   PWM_FADE_MIN_US = PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty minimum)
   PWM_FADE_MAX_US = PERIOD_US; // 100% duty maximum
   
-  long adjustedFreq = FREQ * TUBE_COUNT;
+  long adjustedFreq = FREQ_HZ * TUBE_COUNT;
   MUX_PERIOD_US = 1000000L / adjustedFreq;
   MUX_FADE_MIN_US = MUX_PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty)
   MUX_FADE_MAX_US = MUX_PERIOD_US; // (100% duty)
   
   
   Serial.print("PWM Init - Frequency: ");
-  Serial.print(FREQ, DEC);
+  Serial.print(FREQ_HZ, DEC);
   Serial.print(" - Period: ");
   Serial.print(PERIOD_US, DEC);
   Serial.print(" - PWM_FADE_MIN_US: ");
@@ -296,7 +297,7 @@ void loop() {
     Serial.print("Entered: ");
     Serial.println(newFreq);
     if (newFreq > 0 && newFreq < 10000) {
-      FREQ = newFreq;
+      FREQ_HZ = newFreq;
       calculatePwmVals();
     }
   }
@@ -435,7 +436,7 @@ void loop() {
   *************/
   
   // correct for maximum
-  if (diff >= countDurationMillis) {
+  if (diff > countDurationMillis) {
     diff = countDurationMillis;
   }
   

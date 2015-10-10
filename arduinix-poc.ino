@@ -1,15 +1,20 @@
 /**
  * arduinix-poc
  *
+ * TODO
+ * - track fade up/down (on & off) times for each individual tube (last ts for each tube, on/off state for each tube on each run)
+ * -   use comparison to last ts and duration that it should be on/off for each tube to check if state should be on/off for each run, change state if needed
+ * - custom map function that creates different shapes (exponential, logarithmic)
+ *
  */
 
-// Controller 1 (SN74141/K155ID1)
+// Controller 0 (SN74141/K155ID1)
 byte PIN_CATHODE_0_A = 2;                
 byte PIN_CATHODE_0_B = 3;
 byte PIN_CATHODE_0_C = 4;
 byte PIN_CATHODE_0_D = 5;
 
-// Controller 2 (SN74141/K155ID1)
+// Controller 1 (SN74141/K155ID1)
 byte PIN_CATHODE_1_A = 6;                
 byte PIN_CATHODE_1_B = 7;
 byte PIN_CATHODE_1_C = 8;
@@ -42,9 +47,10 @@ byte PWM_FADE_UP_STATE = 1;
 // 62.5 Hz = 16000us period
 // Experimentation shows the minimum smooth update frequency is ~60Hz
 
+// PWM values
 long FREQ_HZ = 120L;
-long PERIOD_US = 0L;
 
+long PERIOD_US = 0L;
 long PWM_FADE_MIN_US = 0L;
 long PWM_FADE_MAX_US = 0L;
 
@@ -52,9 +58,7 @@ long MUX_PERIOD_US = 0L;
 long MUX_FADE_MIN_US = 0L;
 long MUX_FADE_MAX_US = 0L;
 
-byte SEQ = 0;
-
-
+// predfined routine display params
 int tubeSeq[] = {0, 1, 2, 3, 4, 5};
 int countDurationMillis = 2000;
 
@@ -63,8 +67,21 @@ int muxDemoStepUpDelayMs[] = {500, 80, 20, 2};
 int muxDemoStepUpRuns[] = {4, 15, 80, 400};
 int muxDemoStep = 0;
 
+byte pwmSeqNum = 0;
 
 
+/* 
+ * Caluclate values needed for Pulse Width Modulation (PWM) to acheive fading effects.
+ *
+ * Based on the given/set frequency, calculate the appropriate value
+ * for the period in microseconds, and the min and max durations (in
+ * microseconds) that a tub may be switched on within each period, based 
+ * on 1% min and 100% max duty cycle.
+ * 
+ * Also make adjusted calculations for multiplexing with PWM. Multiplexed control
+ * assumes the desired requency is *per tube*, and thus overall calculations must be
+ * adjusted to accomodate an overall display frequency of Desired Freq * Number of Tubes.
+ */
 void calculatePwmVals() {
   PERIOD_US = 1000000L / FREQ_HZ;
   
@@ -75,7 +92,6 @@ void calculatePwmVals() {
   MUX_PERIOD_US = 1000000L / adjustedFreq;
   MUX_FADE_MIN_US = MUX_PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty)
   MUX_FADE_MAX_US = MUX_PERIOD_US; // (100% duty)
-  
   
   Serial.print("PWM Init - Frequency: ");
   Serial.print(FREQ_HZ, DEC);
@@ -226,14 +242,14 @@ void warmup() {
   delay(300);
   
   // cycle across tubes, starting with 9 down to 0
-  int SEQ = 9;
+  int seqNum = 9;
   for(int i=0; i<TUBE_COUNT; i++) {
-    displayOnTube(i, SEQ, true);
+    displayOnTube(i, seqNum, true);
     delay(65);
     
-    if (i == TUBE_COUNT-1 && SEQ > 0) {
+    if (i == TUBE_COUNT-1 && seqNum > 0) {
       i = -1;
-      SEQ--;
+      seqNum--;
     }
   }
   
@@ -277,9 +293,9 @@ void warmup() {
 
 
 void countUp() {
-  for (int SEQ=0; SEQ<10; SEQ++) {
-    setCathode(true, SEQ);
-    setCathode(false, SEQ);
+  for (int seqNum=0; seqNum<10; seqNum++) {
+    setCathode(true, seqNum);
+    setCathode(false, seqNum);
     delay(500);
   }
 }
@@ -319,7 +335,7 @@ void loop() {
   int diff = now - LAST_TS;
   
   /************* 
-  * basic count up
+  * basic count up - same value on all tubes
   *************/
   /*
   digitalWrite(PIN_ANODE_1, HIGH);
@@ -335,7 +351,7 @@ void loop() {
 
 
   /************* 
-  * multiplex step up
+  * multiplex scroll contant different values on each tube - step up timings
   *************/
   /*
   for (int r=0; r<muxDemoStepUpRuns[muxDemoStep]; r++) {
@@ -354,7 +370,7 @@ void loop() {
   */
   
   /************* 
-  * multiplex 
+  * multiplex couting up different values on each tube - constant timing
   *************/
   /*
   for (int i=0; i<6; i++) {
@@ -378,7 +394,7 @@ void loop() {
   */
   
   /************* 
-   * PWM
+   * PWM - count up same num on all tubes with each fade up + down cycle
    *************/
    /*
    if (diff >= PWM_FADE_LENGTH_MS) {
@@ -398,8 +414,8 @@ void loop() {
     offDurationMicros = map(diff, 0, PWM_FADE_LENGTH_MS, PWM_FADE_MIN_US, PWM_FADE_MAX_US);
   }
   
-  setCathode(true, SEQ);
-  setCathode(false, SEQ);
+  setCathode(true, pwmSeqNum);
+  setCathode(false, pwmSeqNum);
 
   digitalWrite(PIN_ANODE_1, HIGH);
   digitalWrite(PIN_ANODE_2, HIGH);
@@ -420,10 +436,10 @@ void loop() {
       PWM_FADE_UP_STATE = 1;
       
       // increase sequence number
-      if (SEQ < 9) {
-        SEQ++;
+      if (pwmSeqNum < 9) {
+        pwmSeqNum++;
       } else {
-        SEQ = 0;
+        pwmSeqNum = 0;
       }
     } else {
       PWM_FADE_UP_STATE = 0;
@@ -432,7 +448,7 @@ void loop() {
   */
   
   /************* 
-  * multiplex + PWM
+  * multiplex + PWM - count up different num on all tubes with each fade up + down cycle
   *************/
   
   // correct for maximum
@@ -484,6 +500,7 @@ void loop() {
       PWM_FADE_UP_STATE = 0;
     }
   }
+  
   
   
 }

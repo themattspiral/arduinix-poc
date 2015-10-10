@@ -2,9 +2,14 @@
  * arduinix-poc
  *
  * TODO
- * - track fade up/down (on & off) times for each individual tube (last ts for each tube, on/off state for each tube on each run)
- * -   use comparison to last ts and duration that it should be on/off for each tube to check if state should be on/off for each run, change state if needed
- * - custom map function that creates different shapes (exponential, logarithmic)
+ * - tube state tracking
+ *   - remove delay, instead track fade up/down (on & off) times for each individual tube (last ts for each tube, on/off state for each tube on each run)
+ *   - use comparison to last ts and duration that it should be on/off for each tube to check if state should be on/off for each run, change state if needed
+ *
+ * - custom map function(s)
+ *   - custom map function that creates different shapes
+ *   - exponential
+ *   - logarithmic
  *
  */
 

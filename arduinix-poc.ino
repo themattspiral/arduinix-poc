@@ -48,6 +48,9 @@ const byte TUBE_COUNT = 6;
 const byte TUBE_ANODES[] = {1, 1, 2, 2, 3, 3};
 const byte TUBE_CATHODE_CTRL_0[] = {false, true, false, true, false, true};
 
+const byte FADE_LEVEL_MIN = 0;
+const byte FADE_LEVEL_MAX = 6;
+
 boolean WARMED_UP = false;
 
 // timing
@@ -83,23 +86,7 @@ int muxDemoStep = 0;
 
 byte pwmSeqNum = 0;
 
-typedef struct
-{
-  byte displayValue;
-  unsigned long lastDirectionChangeTS;
-  boolean pwmFadingUp;
-  
-  int countDurationMillis;
-} tubeState;
 
-tubeState STATES[TUBE_COUNT] = {
-  {0, 0UL, true, 1500},
-  {1, 0UL, true, 1000},
-  {2, 0UL, true, 750},
-  {3, 0UL, true, 500},
-  {4, 0UL, true, 250},
-  {5, 0UL, true, 100}
-};
 
 
 /* 
@@ -122,7 +109,8 @@ void calculatePwmVals() {
   
   long adjustedFreq = FREQ_HZ * TUBE_COUNT; // for each tube to update at given freq, adjust "total" freq to scale to num of tubes
   MUX_PERIOD_US = 1000000L / adjustedFreq;
-  MUX_FADE_MIN_US = MUX_PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty)
+  //MUX_FADE_MIN_US = MUX_PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty)
+  MUX_FADE_MIN_US = 1L; // (~0% without actually being 0)
   MUX_FADE_MAX_US = MUX_PERIOD_US; // (100% duty)
   
   Serial.print("PWM Init - Frequency: ");
@@ -333,12 +321,73 @@ void countUp() {
 }
 
 
+
+const byte DISP_OFF = 0;
+const byte DISP_CONST = 1;
+const byte DISP_FADE = 2;
+const byte DISP_PULSE = 3;
+
+const byte FADE_DIR_L2H = 0;
+const byte FADE_DIR_H2L = 1;
+
+typedef struct
+{
+  byte displayValue;
+  unsigned long lastDirectionChangeTS;
+  boolean pwmFadingUp;
+  unsigned long currentInstructionStartTS;
+} tubeState;
+
+tubeState STATES[TUBE_COUNT] = {
+  {0, 0UL, true, 0UL},
+  {1, 0UL, true, 0UL},
+  {2, 0UL, true, 0UL},
+  {3, 0UL, true, 0UL},
+  {4, 0UL, true, 0UL},
+  {5, 0UL, true, 0UL}
+};
+
+
+typedef struct
+{
+  byte displayValue;
+  int displayDurationMS;
+  byte displayMode;
+  byte fadeLevelLow;
+  byte fadeLevelHigh;
+  byte fadeDirection;
+  int pulseSegmentDurationMS;
+} tubeInstruction;
+
+// constant
+//tubeInstruction CURRENT_INSTRUCTIONS[TUBE_COUNT] = {
+//  {0, 0, 1, 0, 100, 0, 0},
+//  {1, 0, 1, 0, 100, 0, 0},
+//  {2, 0, 1, 0, 100, 0, 0},
+//  {3, 0, 1, 0, 100, 0, 0},
+//  {4, 0, 1, 0, 100, 0, 0},
+//  {5, 0, 1, 0, 100, 0, 0}
+//};
+
+// pulse
+tubeInstruction CURRENT_INSTRUCTIONS[TUBE_COUNT] = {
+  {5, 6000, 3, 0, 6, 0, 3000},
+  {7, 6200, 2, 0, 5, 0, 3000},
+  {5, 6400, 3, 0, 4, 0, 3000},
+  {5, 6600, 3, 0, 3, 0, 3000},
+  {5, 6800, 3, 0, 2, 0, 3000},
+  {8, 0, 2, 0, 1, 1, 3000}
+};
+
+
 /**
  * ============================
  *    MAIN LOOP - CONTINUOUS
  * ============================
  */
 void loop() {
+  
+  // handle possible serial input of different frequency
   if (Serial.available() > 0) {
     int newFreq = Serial.parseInt();
     //byte newFreq = Serial.read();
@@ -351,12 +400,10 @@ void loop() {
     }
   }
   
+  // current time
   unsigned long now = millis();
   
-  /************* 
-   * warmup
-   *************/
-   
+  // WARMUP
   if (!WARMED_UP) {
     //warmup();
     WARMED_UP = true;
@@ -372,7 +419,170 @@ void loop() {
   // LAST_TS = last direction shift / last event
   // diff = time elapsed since last event
   // *** use this one when all tubes are synchronized ***
-  int diff = now - LAST_TS;
+  //int diff = now - LAST_TS;
+  
+  
+  
+  
+  
+  
+  /*****************************
+  * --- COMMAND INTERPRETER ---
+  ******************************/
+  
+  // multiplex the on/off for pwm on each tube
+  for (int i=0; i<TUBE_COUNT; i++) {
+    
+    // if this is the first time we're processing this instruction, log the time
+    if (STATES[i].currentInstructionStartTS <= 0) {
+      STATES[i].currentInstructionStartTS = now;
+      
+      // if the fade direction is high to low, reverse the default direction
+      if (CURRENT_INSTRUCTIONS[i].fadeDirection == FADE_DIR_H2L) {
+        STATES[i].pwmFadingUp = false;
+      }
+    }
+    
+    //int diffSinceLastCheck = now - STATES[i].lastCheckTS;
+    //STATES[i].lastCheckTS = now;
+    
+    int tubeDirectionDiff = now - STATES[i].lastDirectionChangeTS;
+    
+    // TODO - FIX overflow
+    if (tubeDirectionDiff < 0) {
+      Serial.println("tubeDirectionDiff overflow");
+      
+    }
+    
+    // state
+//    byte displayValue;
+//    unsigned long lastDirectionChangeTS;
+//    boolean pwmFadingUp;
+//    unsigned long currentInstructionStartTS;
+    
+    // instructions
+//    byte displayValue;
+//    int displayDurationMS;
+//    byte displayMode;
+//    byte fadeLevelLow;
+//    byte fadeLevelHigh;
+//    byte fadeDirection;
+//    int pulseSegmentDurationMS;
+
+    
+    // if instruction duration is not indefinite (> 0), update elapsed time
+    if (CURRENT_INSTRUCTIONS[i].displayDurationMS > 0) {
+      int elapsedDurationMS = now - STATES[i].currentInstructionStartTS;
+      
+      // check if over duration
+      if (elapsedDurationMS >= CURRENT_INSTRUCTIONS[i].displayDurationMS) {
+        // TODO - Next Instruction
+        
+        // if no next instruction (and always- for now), display blank
+        displayOnTube(i, BLANK_DISPLAY, true);
+        delayMicroseconds(MUX_FADE_MAX_US);
+        continue;
+      }
+    }
+    
+    if (CURRENT_INSTRUCTIONS[i].displayMode == DISP_OFF) {
+      displayOnTube(i, BLANK_DISPLAY, true);
+      delayMicroseconds(MUX_FADE_MAX_US);
+    }
+    else if (CURRENT_INSTRUCTIONS[i].displayMode == DISP_CONST) {
+    }
+    else if (CURRENT_INSTRUCTIONS[i].displayMode == DISP_FADE) {
+      
+      // correct for maximum (diff since last check may be a more than than count duration limit - limit it to this)
+      if (tubeDirectionDiff > CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS) {
+        tubeDirectionDiff = CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS;
+      }
+      
+      // further constrain min/max for tube-specific min/max
+      long tubeFadeMinUS = map(CURRENT_INSTRUCTIONS[i].fadeLevelLow, FADE_LEVEL_MIN, FADE_LEVEL_MAX, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+      long tubeFadeMaxUS = map(CURRENT_INSTRUCTIONS[i].fadeLevelHigh, FADE_LEVEL_MIN, FADE_LEVEL_MAX, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+      
+      long litDurationMicros = 0L;
+      long offDurationMicros = 0L;
+      
+      // map time difference (from last direction switch) to equivalent-scale on/off durations
+      //   - we can do this for each tub individually, because the lit+off time for each tube will always = tube period, and all 6 will = total period
+      if (STATES[i].pwmFadingUp) {
+        // fade up
+        litDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMinUS, tubeFadeMaxUS);
+        offDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMaxUS, tubeFadeMinUS);
+      } else {
+        // fade down
+        litDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMaxUS, tubeFadeMinUS);
+        offDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMinUS, tubeFadeMaxUS);
+      }
+      
+      // display value on given tube for calculated on & off duration within period
+      displayOnTube(i, CURRENT_INSTRUCTIONS[i].displayValue, true);
+      delayMicroseconds(litDurationMicros);
+      
+      displayOnTube(i, BLANK_DISPLAY, true);
+      delayMicroseconds(offDurationMicros);
+      
+    }
+    else if (CURRENT_INSTRUCTIONS[i].displayMode == DISP_PULSE) {
+      
+      // correct for maximum (diff since last check may be a more than than count duration limit - limit it to this)
+      if (tubeDirectionDiff > CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS) {
+        tubeDirectionDiff = CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS;
+      }
+      
+      // further constrain min/max for tube-specific min/max
+      long tubeFadeMinUS = map(CURRENT_INSTRUCTIONS[i].fadeLevelLow, FADE_LEVEL_MIN, FADE_LEVEL_MAX, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+      long tubeFadeMaxUS = map(CURRENT_INSTRUCTIONS[i].fadeLevelHigh, FADE_LEVEL_MIN, FADE_LEVEL_MAX, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+      
+      long litDurationMicros = 0L;
+      long offDurationMicros = 0L;
+      
+      // map time difference (from last direction switch) to equivalent-scale on/off durations
+      //   - we can do this for each tub individually, because the lit+off time for each tube will always = tube period, and all 6 will = total period
+      if (STATES[i].pwmFadingUp) {
+        // fade up
+        litDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMinUS, tubeFadeMaxUS);
+        offDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMaxUS, tubeFadeMinUS);
+      } else {
+        // fade down
+        litDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMaxUS, tubeFadeMinUS);
+        offDurationMicros = map(tubeDirectionDiff, 0, CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS, tubeFadeMinUS, tubeFadeMaxUS);
+      }
+      
+      // display value on given tube for calculated on & off duration within period
+      displayOnTube(i, CURRENT_INSTRUCTIONS[i].displayValue, true);
+      delayMicroseconds(litDurationMicros);
+      
+      displayOnTube(i, BLANK_DISPLAY, true);
+      delayMicroseconds(offDurationMicros);
+      
+      // check if duration has crossed threshold
+      if (tubeDirectionDiff >= CURRENT_INSTRUCTIONS[i].pulseSegmentDurationMS) {
+        // reset last switch time
+        STATES[i].lastDirectionChangeTS = now;
+    
+        // swap fade direction
+        if (STATES[i].pwmFadingUp) {
+          STATES[i].pwmFadingUp = false;
+        } else {
+          STATES[i].pwmFadingUp = true;
+        }
+      }
+    
+    } // end if
+  
+  
+  } // end for each tube
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   
@@ -381,14 +591,14 @@ void loop() {
   * multiplex + PWM - count up different num on all tubes with each fade up + down cycle
   *   --- WITH individual tube state tracking ---
   *************/
-  
+  /*
   // multiplex the on/off for pwm on each tube
   for (int i=0; i<TUBE_COUNT; i++) {
     int tubeDiff = now - STATES[i].lastDirectionChangeTS;
     
     // correct for maximum (diff since last check may be a more than than count duration limit - limit it to this)
-    if (tubeDiff > STATES[i].countDurationMillis) {
-      tubeDiff = STATES[i].countDurationMillis;
+    if (tubeDiff > STATES[i].pulseSegmentDurationMS) {
+      tubeDiff = STATES[i].pulseSegmentDurationMS;
     }
     
     long litDurationMicros = 0L;
@@ -398,12 +608,12 @@ void loop() {
     //   - we can do this for each tub individually, because the lit+off time for each tube will always = tube period, and all 6 will = total period
     if (STATES[i].pwmFadingUp) {
       // fade up
-      litDurationMicros = map(tubeDiff, 0, STATES[i].countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
-      offDurationMicros = map(tubeDiff, 0, STATES[i].countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+      litDurationMicros = map(tubeDiff, 0, STATES[i].pulseSegmentDurationMS, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+      offDurationMicros = map(tubeDiff, 0, STATES[i].pulseSegmentDurationMS, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
     } else {
       // fade down
-      litDurationMicros = map(tubeDiff, 0, STATES[i].countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
-      offDurationMicros = map(tubeDiff, 0, STATES[i].countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+      litDurationMicros = map(tubeDiff, 0, STATES[i].pulseSegmentDurationMS, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+      offDurationMicros = map(tubeDiff, 0, STATES[i].pulseSegmentDurationMS, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
     }
     
     // display value on given tube for calculated on & off duration within period
@@ -414,7 +624,7 @@ void loop() {
     delayMicroseconds(offDurationMicros);
     
     // check if duration has crossed threshold
-    if (tubeDiff >= STATES[i].countDurationMillis) {
+    if (tubeDiff >= STATES[i].pulseSegmentDurationMS) {
       // reset last switch time
       STATES[i].lastDirectionChangeTS = now;
   
@@ -434,7 +644,7 @@ void loop() {
     }
     
   }
-  
+  */
   
   
   

@@ -1,3 +1,6 @@
+#include <Wire.h>
+#include <RTClib.h>
+
 /**
  * arduinix-poc
  *
@@ -7,6 +10,11 @@
  * - custom map function that creates different shapes (exponential, logarithmic)
  *
  */
+
+// rtc chip and constants
+RTC_DS1307 RTC;
+char DAYS_OF_THE_WEEK[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
 
 // Controller 0 (SN74141/K155ID1)
 byte PIN_CATHODE_0_A = 2;                
@@ -144,10 +152,86 @@ void setup()
   setCathode(true, BLANK_DISPLAY);
   setCathode(false, BLANK_DISPLAY);
   
-  Serial.begin(115200);
+  //Serial.begin(115200);
+  Serial.begin(57600); // need this speed for RTC???????
   
   // initialize PWM Values
   calculatePwmVals();
+
+
+  // RTC setup
+
+  // power for RTC chip
+  pinMode(A3, OUTPUT);
+  digitalWrite(A3, HIGH);
+
+  // ground for RTC chip
+  pinMode(A2, OUTPUT);
+  digitalWrite(A2, LOW);
+  
+  Wire.begin();
+  if (! RTC.begin()) {
+    Serial.println("Couldn't find RTC");
+  } else {
+    Serial.println("Found RTC and begun.");
+  }
+ 
+  if (! RTC.isrunning()) {
+    Serial.println("RTC is NOT running!");
+    
+    // following line sets the RTC to the date & time this sketch was compiled
+    RTC.adjust(DateTime(__DATE__, __TIME__));
+    Serial.println("Set time!!!!!!!");
+  
+  } else {
+    Serial.println("RTC IS running!");
+  }
+
+  Serial.println("setup complete.");
+  Serial.println();
+}
+
+
+void printTime() {
+  DateTime now = RTC.now();
+  
+  Serial.print(now.year(), DEC);
+  Serial.print('/');
+  Serial.print(now.month(), DEC);
+  Serial.print('/');
+  Serial.print(now.day(), DEC);
+  Serial.print(' ');
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  Serial.println();
+  
+  Serial.print(" since 1970 = ");
+  Serial.print(now.unixtime());
+  Serial.print("s = ");
+  Serial.print(now.unixtime() / 86400L);
+  Serial.println("d");
+//  
+//  // calculate a date which is 7 days and 30 seconds into the future
+//  DateTime future (now.unixtime() + 7 * 86400L + 30);
+//  
+//  Serial.print(" now + 7d + 30s: ");
+//  Serial.print(future.year(), DEC);
+//  Serial.print('/');
+//  Serial.print(future.month(), DEC);
+//  Serial.print('/');
+//  Serial.print(future.day(), DEC);
+//  Serial.print(' ');
+//  Serial.print(future.hour(), DEC);
+//  Serial.print(':');
+//  Serial.print(future.minute(), DEC);
+//  Serial.print(':');
+//  Serial.print(future.second(), DEC);
+//  Serial.println();
+  
+  Serial.println();
 }
 
 
@@ -347,7 +431,7 @@ void loop() {
     setCathode(false, i);
     delay(1000);
   }
-  */  
+  */
 
 
   /************* 
@@ -450,7 +534,7 @@ void loop() {
   /************* 
   * multiplex + PWM - count up different num on all tubes with each fade up + down cycle
   *************/
-  
+  /*
   // correct for maximum
   if (diff > countDurationMillis) {
     diff = countDurationMillis;
@@ -500,7 +584,10 @@ void loop() {
       PWM_FADE_UP_STATE = 0;
     }
   }
-  
+  */
+
+  printTime();
+  delay(1000);
   
   
 }

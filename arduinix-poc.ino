@@ -76,8 +76,8 @@ long MUX_FADE_MIN_US = 0L;
 long MUX_FADE_MAX_US = 0L;
 
 // predfined routine display params
-//int tubeSeq[] = {0, 1, 2, 3, 4, 5};
-//int countDurationMillis = 2000;
+int tubeSeq[] = {0, 1, 2, 3, 4, 5};
+int countDurationMillis = 2000;
 
 int muxDemoStepUpDurationMillis = 6000;
 int muxDemoStepUpDelayMs[] = {500, 80, 20, 2};
@@ -418,8 +418,7 @@ void loop() {
   
   // LAST_TS = last direction shift / last event
   // diff = time elapsed since last event
-  // *** use this one when all tubes are synchronized ***
-  //int diff = now - LAST_TS;
+  int diff = now - LAST_TS;
   
   
   
@@ -429,7 +428,7 @@ void loop() {
   /*****************************
   * --- COMMAND INTERPRETER ---
   ******************************/
-  
+  /*
   // multiplex the on/off for pwm on each tube
   for (int i=0; i<TUBE_COUNT; i++) {
     
@@ -575,7 +574,7 @@ void loop() {
   
   
   } // end for each tube
-  
+  */
   
   
   
@@ -765,7 +764,7 @@ void loop() {
   /************* 
   * multiplex + PWM - count up different num on all tubes with each fade up + down cycle
   *************/
-  /*
+  
   // correct for maximum (diff since last check may be a more than than count duration limit - limit it to this)
   if (diff > countDurationMillis) {
     diff = countDurationMillis;
@@ -779,25 +778,12 @@ void loop() {
     // fade up
     litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
     offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
-    //offDurationMicros = MUX_PERIOD_US - litDurationMicros;
   } else {
     // fade down
     litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
     offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
-    //offDurationMicros = MUX_PERIOD_US - litDurationMicros;
   }
-  
-  // correct off duration being below minimum
-//  if (offDurationMicros < MUX_FADE_MIN_US) {
-//    Serial.print("Off duration below minimum: ");
-//    Serial.print(offDurationMicros, DEC);
-//    Serial.print(" < ");
-//    Serial.print(MUX_FADE_MIN_US, DEC);
-//    Serial.println("");
-//    
-//    offDurationMicros = MUX_FADE_MIN_US;
-//  }
-  
+    
   // multiplex the on/off for pwm on each tube
   for (int i=0; i<TUBE_COUNT; i++) {
     displayOnTube(i, tubeSeq[i], true);
@@ -828,7 +814,7 @@ void loop() {
       PWM_FADE_UP_STATE = 0;
     }
   }
-  */
+  
   
   
 }

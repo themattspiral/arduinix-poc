@@ -85,7 +85,7 @@ long MUX_FADE_MAX_US = 0L;
 
 // predfined routine display params
 int tubeSeq[] = {0, 1, 2, 3, 4, 5};
-int countDurationMillis = 2000;
+int countDurationMillis = 500;
 
 int muxDemoStepUpDurationMillis = 6000;
 int muxDemoStepUpDelayMs[] = {500, 80, 20, 2};
@@ -172,8 +172,7 @@ void setup()
   setCathode(true, BLANK_DISPLAY);
   setCathode(false, BLANK_DISPLAY);
   
-  //Serial.begin(115200);
-  Serial.begin(57600); // need this speed for RTC???????
+  Serial.begin(115200);
   
   // initialize PWM Values
   calculatePwmVals();
@@ -212,26 +211,24 @@ void setup()
 }
 
 
-void printTime() {
-  DateTime now = RTC.now();
-  
-  Serial.print(now.year(), DEC);
+void printTime(DateTime dt) {
+  Serial.print(dt.year(), DEC);
   Serial.print('/');
-  Serial.print(now.month(), DEC);
+  Serial.print(dt.month(), DEC);
   Serial.print('/');
-  Serial.print(now.day(), DEC);
+  Serial.print(dt.day(), DEC);
   Serial.print(' ');
-  Serial.print(now.hour(), DEC);
+  Serial.print(dt.hour(), DEC);
   Serial.print(':');
-  Serial.print(now.minute(), DEC);
+  Serial.print(dt.minute(), DEC);
   Serial.print(':');
-  Serial.print(now.second(), DEC);
+  Serial.print(dt.second(), DEC);
   Serial.println();
   
   Serial.print(" since 1970 = ");
-  Serial.print(now.unixtime());
+  Serial.print(dt.unixtime());
   Serial.print("s = ");
-  Serial.print(now.unixtime() / 86400L);
+  Serial.print(dt.unixtime() / 86400L);
   Serial.println("d");
 //  
 //  // calculate a date which is 7 days and 30 seconds into the future
@@ -289,6 +286,23 @@ void setCathode(boolean ctrl0, byte displayNumber) {
     digitalWrite(PIN_CATHODE_1_B, b);
     digitalWrite(PIN_CATHODE_1_A, a);
   }
+}
+
+void loadTime(DateTime dt, int tubes[], bool twelveHour) {
+    int hours = dt.hour();
+    if (twelveHour && hours > 12) {
+      hours -= 12;
+    }
+    tubes[0] = hours / 10;
+    tubes[1] = hours % 10;
+
+    int mins = dt.minute();
+    tubes[2] = mins / 10;
+    tubes[3] = mins % 10;
+
+    int secs = dt.second();
+    tubes[4] = secs / 10;
+    tubes[5] = secs % 10;
 }
 
 void displayOnTube(byte tubeIndex, byte displayNumber, boolean exclusive) {
@@ -900,9 +914,80 @@ void loop() {
   }
   */
 
-  printTime();
+
+  /************* 
+  * RTC test
+  *************/
+  /*
+  DateTime now = RTC.now();
+  printTime(now);
   delay(1000);
+  */
+
+
+    
+  /************* 
+  * multiplex + PWM + RTC
+  *************/
+
+  Serial.print("uncorrected diff: ");
+  Serial.print(diff, DEC);
+  Serial.println();
+    
+  // correct for maximum (diff since last check may be a more than than count duration limit - limit it to this)
+  if (diff > countDurationMillis) {
+    //Serial.print("diff > countDurationMillis. diff is: ");
+    //Serial.print(diff, DEC);
+    Serial.print("correcting diff to ");
+    Serial.print(countDurationMillis, DEC);
+    Serial.println();
+    
+    diff = countDurationMillis;
+  }
   
+  long litDurationMicros = 0L;
+  long offDurationMicros = 0L;
+
+  // map time difference (from last direction switch) to equivalent-scale on/off durations
+  if (PWM_FADE_UP_STATE == 1) {
+    // fade up
+    litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+    offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+
+    unsigned long total = litDurationMicros + offDurationMicros;
+    Serial.print("  total: ");
+    Serial.print(total, DEC);
+    Serial.println();
+  } else {
+    // fade down
+    litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+    offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+  }
+    
+  // multiplex the on/off for pwm on each tube
+  for (int i=0; i<TUBE_COUNT; i++) {
+    displayOnTube(i, tubeSeq[i], true);
+    delayMicroseconds(litDurationMicros);
+    
+    displayOnTube(i, BLANK_DISPLAY, true);
+    delayMicroseconds(offDurationMicros);
+  }
   
+  if (diff >= countDurationMillis) {
+    
+    // reset last switch time
+    LAST_TS = now;
+
+    // swap fade direction
+    if (PWM_FADE_UP_STATE == 0) {
+      PWM_FADE_UP_STATE = 1;
+    } else {
+      PWM_FADE_UP_STATE = 0;
+    }
+
+    // put time into tubeSeq
+    DateTime now = RTC.now();
+    loadTime(now, tubeSeq, true);
+  }
 }
 

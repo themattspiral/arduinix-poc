@@ -25,6 +25,7 @@
  *
  */
 
+
 // rtc chip and constants
 RTC_DS1307 RTC;
 char DAYS_OF_THE_WEEK[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
@@ -73,7 +74,7 @@ byte PWM_FADE_UP_STATE = 1;
 // Experimentation shows the minimum smooth update frequency is ~60Hz
 
 // PWM values
-long FREQ_HZ = 120L;
+long FREQ_HZ = 60L;
 
 long PERIOD_US = 0L;
 long PWM_FADE_MIN_US = 0L;
@@ -119,7 +120,7 @@ void calculatePwmVals() {
   MUX_PERIOD_US = 1000000L / adjustedFreq;
   //MUX_FADE_MIN_US = MUX_PERIOD_US / 100L; // (1/100 = 0.01 = 1% duty)
   MUX_FADE_MIN_US = 1L; // (~0% without actually being 0)
-  MUX_FADE_MAX_US = MUX_PERIOD_US; // (100% duty)
+  MUX_FADE_MAX_US = MUX_PERIOD_US; // (~100% duty)
   
   Serial.print("PWM Init - Frequency: ");
   Serial.print(FREQ_HZ, DEC);
@@ -476,6 +477,15 @@ tubeInstruction CURRENT_INSTRUCTIONS[TUBE_COUNT] = {
   {5, 6800, 3, 0, 2, 0, 3000},
   {8, 0, 2, 0, 1, 1, 3000}
 };
+
+
+
+
+
+
+
+
+
 
 
 /**
@@ -930,17 +940,14 @@ void loop() {
   * multiplex + PWM + RTC
   *************/
 
-  Serial.print("uncorrected diff: ");
-  Serial.print(diff, DEC);
-  Serial.println();
+//  Serial.print("Uncorrected diff (ms): ");
+//  Serial.print(diff, DEC);
+//  Serial.println();
     
   // correct for maximum (diff since last check may be a more than than count duration limit - limit it to this)
   if (diff > countDurationMillis) {
-    //Serial.print("diff > countDurationMillis. diff is: ");
-    //Serial.print(diff, DEC);
-    Serial.print("correcting diff to ");
-    Serial.print(countDurationMillis, DEC);
-    Serial.println();
+    Serial.print("  > Correcting diff (ms) from: ");
+    Serial.println(diff, DEC);
     
     diff = countDurationMillis;
   }
@@ -952,17 +959,27 @@ void loop() {
   if (PWM_FADE_UP_STATE == 1) {
     // fade up
     litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
-    offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
-
-    unsigned long total = litDurationMicros + offDurationMicros;
-    Serial.print("  total: ");
-    Serial.print(total, DEC);
-    Serial.println();
+    //offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+    //offDurationMicros = map(countDurationMillis - diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+    offDurationMicros = MUX_FADE_MAX_US - litDurationMicros;
+    //Serial.print("  ^^ UP  : ");
   } else {
     // fade down
     litDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
-    offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+    //offDurationMicros = map(diff, 0, countDurationMillis, MUX_FADE_MIN_US, MUX_FADE_MAX_US);
+    //offDurationMicros = map(countDurationMillis - diff, 0, countDurationMillis, MUX_FADE_MAX_US, MUX_FADE_MIN_US);
+    offDurationMicros = MUX_FADE_MAX_US - litDurationMicros;
+    //Serial.print("  vv DOWN: ");
   }
+
+//  unsigned long perTubeTotal = litDurationMicros + offDurationMicros;
+//  Serial.print("  > Per Tube (us) - ON: ");
+//  Serial.print(litDurationMicros, DEC);
+//  Serial.print(" - OFF: ");
+//  Serial.print(offDurationMicros, DEC);
+//  Serial.print(" - TOTAL: ");
+//  Serial.print(perTubeTotal, DEC);
+//  Serial.println();
     
   // multiplex the on/off for pwm on each tube
   for (int i=0; i<TUBE_COUNT; i++) {
@@ -972,11 +989,22 @@ void loop() {
     displayOnTube(i, BLANK_DISPLAY, true);
     delayMicroseconds(offDurationMicros);
   }
+
+//  unsigned long allTubesTotal = perTubeTotal * TUBE_COUNT;
+//  Serial.print("  > All Tubes (us) - TOTAL: ");
+//  Serial.print(allTubesTotal, DEC);
+//  Serial.println();
+//
+//  unsigned long allTubesTotalMs = allTubesTotal / 1000;
+//  Serial.print("  > All Tubes (ms) - TOTAL: ");
+//  Serial.print(allTubesTotalMs, DEC);
+//  Serial.println();
+  
   
   if (diff >= countDurationMillis) {
     
     // reset last switch time
-    LAST_TS = now;
+    //LAST_TS = now;
 
     // swap fade direction
     if (PWM_FADE_UP_STATE == 0) {
@@ -988,6 +1016,10 @@ void loop() {
     // put time into tubeSeq
     DateTime now = RTC.now();
     loadTime(now, tubeSeq, true);
+
+    // reset last switch time
+    LAST_TS = millis();
   }
+  
 }
 

@@ -37,7 +37,7 @@ const bool TUBE_CATHODE_CTRL_0[] = {false, true, false, true, false, true};
 // SN74141/K155ID1 controllers are BCD-to-decimal, and are wired such that
 // giving them 0-9 in BCD will represent themselves as Nixie tube decimals, 
 // and anything else is unconnected (therefore blank)
-const int BLANK_TUBE_VALUE = 15;
+const int BLANK = 15;
 
 // behavior constants
 const int IDLE_DELAY_MS = 2;
@@ -45,6 +45,41 @@ const int MUX_SINGLE_TUBE_DELAY_US = 3000;  // 300µs - 3000µs is ideal (<300 g
 const int DEMO_STEP_DURATION_MS = 150;      // how fast to count up
 const int BUTTON_DEBOUNCE_DELAY_MS = 20;
 
+
+/**
+ * ============================
+ *    Runtime State
+ * ============================
+ */
+
+// nixie tube demo state 🚥🚥
+unsigned long lastDemoStepTimestampMs = 0UL;
+int basicDemoTubeValue = 0;
+int muxDemoTubeValues[] = {0, 1, 2, 3, 4, 5};
+
+// button state 🔘🔘
+int rightButtonLastVal = HIGH;
+int leftButtonLastVal = HIGH;
+int rightButtonVal = HIGH;
+int leftButtonVal = HIGH;
+unsigned long rightButtonLastDebounceMS = 0UL;
+unsigned long leftButtonLastDebounceMS = 0UL;
+
+// chess clock state ♟⏲⏲♟
+bool leftPlayersTurn = false;
+bool clockRunning = false;
+unsigned long turnStartTimestampMS = 0UL;
+
+typedef struct {
+  int displayTubeValues[];
+  unsigned long turnLimitMS;
+} timerOption;
+
+timerOption TURN_TIMER_OPTIONS[] = {
+  { { 2, 4, BLANK, BLANK, BLANK, BLANK }, 86401000UL },
+  { { 0, 1, BLANK, BLANK, BLANK, BLANK }, 3600000UL },
+  { { BLANK, BLANK, 3, 0, BLANK, BLANK }, 1800000UL }
+};
 
 /**
  * ============================
@@ -68,15 +103,13 @@ void setup()
   pinMode(PIN_CATHODE_1_C, OUTPUT);
   pinMode(PIN_CATHODE_1_D, OUTPUT);
   
-  // initialize anodes
   digitalWrite(PIN_ANODE_1, LOW);
   digitalWrite(PIN_ANODE_2, LOW);
   digitalWrite(PIN_ANODE_3, LOW);
   digitalWrite(PIN_ANODE_4, LOW);
   
-  // initialize cathodes to 15 (blank)
-  setCathode(true, BLANK_TUBE_VALUE);
-  setCathode(false, BLANK_TUBE_VALUE);
+  setCathode(true, BLANK);
+  setCathode(false, BLANK);
   
   // Serial.begin(9600);
   Serial.begin(115200);
@@ -92,30 +125,6 @@ void setup()
   digitalWrite(PIN_BUTTON_LEFT_LED, LOW);
 }
 
-
-/**
- * ============================
- *    Runtime Variables
- * ============================
- */
-
-// nixie tube demo state 📊
-unsigned long lastDemoStepTimestampMs = 0UL;
-int basicDemoTubeValue = 0;
-int muxDemoTubeValues[] = {0, 1, 2, 3, 4, 5};
-
-// button state 🔘
-int rightButtonLastVal = HIGH;
-int leftButtonLastVal = HIGH;
-int rightButtonVal = HIGH;
-int leftButtonVal = HIGH;
-unsigned long rightButtonLastDebounceMS = 0UL;
-unsigned long leftButtonLastDebounceMS = 0UL;
-
-// chess clock state ♟⏲⏲♟
-bool leftPlayersTurn = false;
-bool clockRunning = false;
-unsigned long turnStartTimestampMS = 0UL;
 
 /**
  * ============================
@@ -166,21 +175,21 @@ void displayOnTube(int tubeIndex, int displayVal) {
     case 1:
       digitalWrite(PIN_ANODE_2, LOW);
       digitalWrite(PIN_ANODE_3, LOW);
-      digitalWrite(PIN_ANODE_1, displayVal == BLANK_TUBE_VALUE ? LOW : HIGH);
+      digitalWrite(PIN_ANODE_1, displayVal == BLANK ? LOW : HIGH);
       break;
     case 2:
       digitalWrite(PIN_ANODE_1, LOW);
       digitalWrite(PIN_ANODE_3, LOW);
-      digitalWrite(PIN_ANODE_2, displayVal == BLANK_TUBE_VALUE ? LOW : HIGH);
+      digitalWrite(PIN_ANODE_2, displayVal == BLANK ? LOW : HIGH);
       break;
     case 3:
       digitalWrite(PIN_ANODE_1, LOW);
       digitalWrite(PIN_ANODE_2, LOW);
-      digitalWrite(PIN_ANODE_3, displayVal == BLANK_TUBE_VALUE ? LOW : HIGH);
+      digitalWrite(PIN_ANODE_3, displayVal == BLANK ? LOW : HIGH);
       break;
   }
   
-  setCathode(!cathodeCtrl0, BLANK_TUBE_VALUE);
+  setCathode(!cathodeCtrl0, BLANK);
   setCathode(cathodeCtrl0, displayVal);
 }
 
@@ -299,18 +308,17 @@ void loopCheckButtons(unsigned long loopNow) {
   leftButtonLastVal = leftButtonReading;
 }
 
-void displayElapsedTime(unsigned long elapsedTurnTimeMS) {
-  int elapsedSec = elapsedTurnTimeMS / 1000;
+void displayClockTime(unsigned long turnTimeMS) {
+  unsigned long elapsedSec = turnTimeMS / 1000;
 
   int hours = elapsedSec / 3600;
   int min = (elapsedSec % 3600) / 60;
   int sec = (elapsedSec % 3600) % 60;
-  int fractionalSec = (elapsedTurnTimeMS % 1000) / 10;
+  int fractionalSec = (turnTimeMS % 1000) / 10;
 
   int clockTubeValues[TUBE_COUNT];
 
   if (hours > 0) {
-    //  clockTubeValues = {hours / 10, hours % 10, min / 10, min % 10, sec / 10, sec % 10};
     clockTubeValues[0] = hours / 10;
     clockTubeValues[1] = hours % 10;
     clockTubeValues[2] = min / 10;
@@ -318,7 +326,6 @@ void displayElapsedTime(unsigned long elapsedTurnTimeMS) {
     clockTubeValues[4] = sec / 10;
     clockTubeValues[5] = sec % 10;
   } else if (min > 0) {
-    // clockTubeValues = {min / 10, min % 10, sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10};
     clockTubeValues[0] = min / 10;
     clockTubeValues[1] = min % 10;
     clockTubeValues[2] = sec / 10;
@@ -327,17 +334,15 @@ void displayElapsedTime(unsigned long elapsedTurnTimeMS) {
     clockTubeValues[5] = fractionalSec % 10;
   } else {
     if (leftPlayersTurn) {
-      // clockTubeValues = {sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10, 15, 15};
       clockTubeValues[0] = sec / 10;
       clockTubeValues[1] = sec % 10;
       clockTubeValues[2] = fractionalSec / 10;
       clockTubeValues[3] = fractionalSec % 10;
-      clockTubeValues[4] = 15;
-      clockTubeValues[5] = 15;
+      clockTubeValues[4] = BLANK;
+      clockTubeValues[5] = BLANK;
     } else {
-      // clockTubeValues = {15, 15, sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10};
-      clockTubeValues[0] = 15;
-      clockTubeValues[1] = 15;
+      clockTubeValues[0] = BLANK;
+      clockTubeValues[1] = BLANK;
       clockTubeValues[2] = sec / 10;
       clockTubeValues[3] = sec % 10;
       clockTubeValues[4] = fractionalSec / 10;
@@ -353,7 +358,10 @@ void displayElapsedTime(unsigned long elapsedTurnTimeMS) {
 
 void loopChessClock(unsigned long loopNow) {
   if (clockRunning) {
-    displayElapsedTime(loopNow - turnStartTimestampMS);
+    unsigned long elapsedMS = loopNow - turnStartTimestampMS;
+    unsigned long remainingMS = 86401000UL - elapsedMS;
+
+    displayClockTime(remainingMS);
   } else {
     delay(IDLE_DELAY_MS);
   }
@@ -367,13 +375,6 @@ void loopChessClock(unsigned long loopNow) {
  */
 void loop() {
   unsigned long now = millis();
-  
   loopCheckButtons(now);
-
-  // loopCountBasic(now);
-
-  // loopCountMultiplexed(now);
-
   loopChessClock(now);
-
 }

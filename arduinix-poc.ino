@@ -22,11 +22,12 @@ const int PIN_ANODE_2 = 11;
 const int PIN_ANODE_3 = 12;
 const int PIN_ANODE_4 = 13;
 
-// player button pins
+// button pins
 const int PIN_BUTTON_RIGHT = A0;
 const int PIN_BUTTON_LEFT = A1;
 const int PIN_BUTTON_RIGHT_LED = A2;
 const int PIN_BUTTON_LEFT_LED = A3;
+const int PIN_BUTTON_UTILITY = A4;
 
 // 6 tubes, each wired to a unique combination of anode pin and cathode controller
 // TODO: IMPROVE THIS (no true/false)
@@ -60,10 +61,13 @@ int muxDemoTubeValues[] = {0, 1, 2, 3, 4, 5};
 // button state 🔘🔘
 int rightButtonLastVal = HIGH;
 int leftButtonLastVal = HIGH;
+int utilityButtonLastVal = HIGH;
 int rightButtonVal = HIGH;
 int leftButtonVal = HIGH;
+int utilityButtonVal = HIGH;
 unsigned long rightButtonLastDebounceMS = 0UL;
 unsigned long leftButtonLastDebounceMS = 0UL;
+unsigned long utilityButtonLastDebounceMS = 0UL;
 
 // chess clock state ♟⏲⏲♟
 bool leftPlayersTurn = false;
@@ -88,6 +92,9 @@ timerOption TURN_TIMER_OPTIONS[] = {
  */
 void setup() 
 {
+  // Serial.begin(9600);
+  Serial.begin(115200);
+
   pinMode(PIN_ANODE_1, OUTPUT);
   pinMode(PIN_ANODE_2, OUTPUT);
   pinMode(PIN_ANODE_3, OUTPUT);
@@ -110,15 +117,13 @@ void setup()
   
   setCathode(true, BLANK);
   setCathode(false, BLANK);
-  
-  // Serial.begin(9600);
-  Serial.begin(115200);
 
-  // use analog inputs 0 and 1 as digital inputs for buttons
+  // use analog inputs as digital inputs for buttons
   pinMode(PIN_BUTTON_RIGHT, INPUT_PULLUP);
   pinMode(PIN_BUTTON_LEFT, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_UTILITY, INPUT_PULLUP);
 
-  // use analog inputs 2 and 3 as digital outputs for button LEDs
+  // use analog inputs as digital outputs for button LEDs
   pinMode(PIN_BUTTON_RIGHT_LED, OUTPUT);
   pinMode(PIN_BUTTON_LEFT_LED, OUTPUT);
   digitalWrite(PIN_BUTTON_RIGHT_LED, LOW);
@@ -270,9 +275,17 @@ void handleLeftButtonPress(unsigned long loopNow) {
   }
 }
 
+void handleUtilityButtonPress(unsigned long loopNow) {
+  if (clockRunning) {
+    Serial.println("utility press");
+    // clockRunning = false;
+  }
+}
+
 void loopCheckButtons(unsigned long loopNow) {
   int rightButtonReading = digitalRead(PIN_BUTTON_RIGHT);
   int leftButtonReading = digitalRead(PIN_BUTTON_LEFT);
+  int utilityButtonReading = digitalRead(PIN_BUTTON_UTILITY);
 
   // handle press state change (set debounce timer)
   if (rightButtonReading != rightButtonLastVal) {
@@ -280,6 +293,9 @@ void loopCheckButtons(unsigned long loopNow) {
   }
   if (leftButtonReading != leftButtonLastVal) {
     leftButtonLastDebounceMS = loopNow;
+  }
+  if (utilityButtonReading != utilityButtonLastVal) {
+    utilityButtonLastDebounceMS = loopNow;
   }
 
   // check right button debounce time exceeded with un-flickering changed value
@@ -304,8 +320,20 @@ void loopCheckButtons(unsigned long loopNow) {
     }
   }
 
+  // check utility button debounce time exceeded with un-flickering changed value
+  unsigned long utilityDebounceDiff = loopNow - utilityButtonLastDebounceMS;
+  if (utilityDebounceDiff > BUTTON_DEBOUNCE_DELAY_MS && utilityButtonReading != utilityButtonVal) {
+    utilityButtonVal = utilityButtonReading;
+
+    // using internal pull-up resistor means a pressed button goes LOW
+    if (utilityButtonVal == LOW) {
+      handleUtilityButtonPress(loopNow);
+    }
+  }
+
   rightButtonLastVal = rightButtonReading;
   leftButtonLastVal = leftButtonReading;
+  utilityButtonLastVal = utilityButtonReading;
 }
 
 void displayClockTime(unsigned long turnTimeMS) {

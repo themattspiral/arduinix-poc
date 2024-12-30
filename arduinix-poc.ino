@@ -32,8 +32,8 @@ const int PIN_BUTTON_UTILITY = A4;
 // 6 tubes, each wired to a unique combination of anode pin and cathode controller
 // TODO: IMPROVE THIS (no true/false)
 const int TUBE_COUNT = 6;
-const int TUBE_ANODES[] = {1, 1, 2, 2, 3, 3};
-const bool TUBE_CATHODE_CTRL_0[] = {false, true, false, true, false, true};
+const int TUBE_ANODES[TUBE_COUNT] = {1, 1, 2, 2, 3, 3};
+const bool TUBE_CATHODE_CTRL_0[TUBE_COUNT] = {false, true, false, true, false, true};
 
 // SN74141/K155ID1 controllers are BCD-to-decimal, and are wired such that
 // giving them 0-9 in BCD will represent themselves as Nixie tube decimals, 
@@ -41,9 +41,11 @@ const bool TUBE_CATHODE_CTRL_0[] = {false, true, false, true, false, true};
 const int BLANK = 15;
 
 // behavior constants
-const int MUX_SINGLE_TUBE_DELAY_US = 2500;  // 300µs - 3000µs is ideal (<300 ghosts, >3000 flickers)
+const int IDLE_DELAY_MS = 2;
+const int MUX_SINGLE_TUBE_DELAY_US = 2500;  // 300µs - 3000µs is ideal for IN-2 tubes ( <300 ghosts, >3000 flickers )
 const int DEMO_STEP_DURATION_MS = 150;      // how fast to count up
 const int TIMEOUT_BLINK_DURATION_MS = 500;
+const int MENU_BLINK_DURATION_MS = 200;
 const int BUTTON_DEBOUNCE_DELAY_MS = 20;
 
 
@@ -55,7 +57,7 @@ const int BUTTON_DEBOUNCE_DELAY_MS = 20;
 
 // nixie tube demo state 🚥🚥
 int basicDemoTubeValue = 0;
-int muxDemo[] = {0, 1, 2, 3, 4, 5};
+int muxDemo[TUBE_COUNT] = {0, 1, 2, 3, 4, 5};
 
 // button state 🔘🔘
 int rightButtonLastVal = HIGH;
@@ -74,18 +76,27 @@ clockState currentClockState = IDLE;
 unsigned long lastEventStepTimestampMs = 0UL;
 unsigned long turnStartTimestampMS = 0UL;
 bool leftPlayersTurn = false;
-bool timeoutBlinkOn = false;
+bool blinkOn = false;
 
 typedef struct {
-  int displayTubeValues[];
+  int displayValues[TUBE_COUNT];
   unsigned long turnLimitMS;
 } timerOption;
 
-timerOption TURN_TIMER_OPTIONS[] = {
+const int TURN_TIMER_OPTIONS_COUNT = 10;
+timerOption TURN_TIMER_OPTIONS[TURN_TIMER_OPTIONS_COUNT] = {
+  { { 7, 2, BLANK, BLANK, BLANK, BLANK }, 259201000UL },
+  { { 4, 8, BLANK, BLANK, BLANK, BLANK }, 172801000UL },
   { { 2, 4, BLANK, BLANK, BLANK, BLANK }, 86401000UL },
-  { { 0, 1, BLANK, BLANK, BLANK, BLANK }, 3600000UL },
-  { { BLANK, BLANK, 3, 0, BLANK, BLANK }, 1800000UL }
+  { { 0, 1, BLANK, BLANK, BLANK, BLANK }, 3601000UL },
+  { { BLANK, BLANK, 3, 0, BLANK, BLANK }, 1800000UL },
+  { { BLANK, BLANK, 1, 5, BLANK, BLANK }, 900000UL },
+  { { BLANK, BLANK, 1, 0, BLANK, BLANK }, 600000UL },
+  { { BLANK, BLANK, 0, 5, BLANK, BLANK }, 300000UL },
+  { { BLANK, BLANK, 0, 3, BLANK, BLANK }, 180000UL },
+  { { BLANK, BLANK, 0, 1, BLANK, BLANK }, 60000UL }
 };
+int currentTurnTimerOption = 2;
 
 /**
  * ============================
@@ -236,25 +247,25 @@ void displayClockTime(unsigned long turnTimeMS) {
 }
 
 void loopCountdown(unsigned long loopNow) {
-  unsigned long timeoutLimit = 86401000UL;
+  unsigned long timeoutLimit = TURN_TIMER_OPTIONS[currentTurnTimerOption].turnLimitMS;
   unsigned long elapsedMS = loopNow - turnStartTimestampMS;
   unsigned long remainingMS = timeoutLimit - elapsedMS;
 
   if (elapsedMS >= timeoutLimit) {
     currentClockState = TIMEOUT;
   } else {
-    displayClockTime(remainingMS);
     setButtonLEDs(leftPlayersTurn, !leftPlayersTurn);
+    displayClockTime(remainingMS);
   }
 }
 
 void loopTimeout(unsigned long loopNow) {
   if (loopNow - lastEventStepTimestampMs > TIMEOUT_BLINK_DURATION_MS) {
     lastEventStepTimestampMs = loopNow;
-    timeoutBlinkOn = !timeoutBlinkOn;
+    blinkOn = !blinkOn;
   }
 
-  if (timeoutBlinkOn) {
+  if (blinkOn) {
     if (leftPlayersTurn) {
       // left player timed out and lost
       setButtonLEDs(true, true);
@@ -270,9 +281,34 @@ void loopTimeout(unsigned long loopNow) {
   }
 }
 
+void loopMenu(unsigned long loopNow) {
+    if (loopNow - lastEventStepTimestampMs > MENU_BLINK_DURATION_MS) {
+    lastEventStepTimestampMs = loopNow;
+    blinkOn = !blinkOn;
+  }
+
+  if (blinkOn) {
+    setButtonLEDs(true, true);
+    multiplexDisplay(
+      TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[0],
+      TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[1],
+      TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[2],
+      TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[3],
+      TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[4],
+      TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[5]
+    );
+  } else {
+    setButtonLEDs(false, false);
+    multiplexDisplay(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
+  }
+}
+
 void loopIdle() {
   setButtonLEDs(false, false);
   multiplexDisplay(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
+
+  // kill some time
+  delay(IDLE_DELAY_MS);
 }
 
 // multiplex couting up different values on each tube
@@ -296,6 +332,12 @@ void handleRightButtonPress(unsigned long loopNow) {
   if (currentClockState == RUNNING && !leftPlayersTurn) {
     leftPlayersTurn = !leftPlayersTurn;
     turnStartTimestampMS = loopNow;
+  } else if (currentClockState == MENU) {
+    if (currentTurnTimerOption == TURN_TIMER_OPTIONS_COUNT - 1) {
+      currentTurnTimerOption = 0;
+    } else {
+      currentTurnTimerOption++;
+    }
   } else if (currentClockState == IDLE || currentClockState == DEMO) {
     leftPlayersTurn = false;
     turnStartTimestampMS = loopNow;
@@ -309,6 +351,12 @@ void handleLeftButtonPress(unsigned long loopNow) {
   if (currentClockState == RUNNING && leftPlayersTurn) {
     leftPlayersTurn = !leftPlayersTurn;
     turnStartTimestampMS = loopNow;
+  } else if (currentClockState == MENU) {
+    if (currentTurnTimerOption == 0) {
+      currentTurnTimerOption = TURN_TIMER_OPTIONS_COUNT - 1;
+    } else {
+      currentTurnTimerOption--;
+    }
   } else if (currentClockState == IDLE || currentClockState == DEMO) {
     leftPlayersTurn = true;
     turnStartTimestampMS = loopNow;
@@ -320,8 +368,8 @@ void handleLeftButtonPress(unsigned long loopNow) {
 
 void handleUtilityButtonPress(unsigned long loopNow) {
   if (currentClockState == IDLE) {
-    currentClockState = DEMO;
-  } else if (currentClockState == DEMO || currentClockState == TIMEOUT || currentClockState == RUNNING) {
+    currentClockState = MENU;
+  } else if (currentClockState == DEMO || currentClockState == MENU || currentClockState == TIMEOUT || currentClockState == RUNNING) {
     currentClockState = IDLE;
     turnStartTimestampMS = 0;
   }
@@ -396,10 +444,12 @@ void loop() {
     loopCountdown(now);
   } else if (currentClockState == TIMEOUT) {
     loopTimeout(now);
-  } else if (currentClockState == IDLE) {
-    loopIdle();
+  } else if (currentClockState == MENU) {
+    loopMenu(now);
   } else if (currentClockState == DEMO) {
     loopCountMultiplexed(now);
+  } else if (currentClockState == IDLE) {
+    loopIdle();
   }
 }
 

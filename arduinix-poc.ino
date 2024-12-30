@@ -45,7 +45,7 @@ const int IDLE_DELAY_MS = 2;
 const int MUX_SINGLE_TUBE_DELAY_US = 2500;  // 300µs - 3000µs is ideal for IN-2 tubes ( <300 ghosts, >3000 flickers )
 const int DEMO_STEP_DURATION_MS = 150;      // how fast to count up
 const int TIMEOUT_BLINK_DURATION_MS = 500;
-const int MENU_BLINK_DURATION_MS = 200;
+const int MENU_BLINK_DURATION_MS = 300;
 const int BUTTON_DEBOUNCE_DELAY_MS = 20;
 
 
@@ -83,8 +83,8 @@ typedef struct {
   unsigned long turnLimitMS;
 } timerOption;
 
-const int TURN_TIMER_OPTIONS_COUNT = 10;
-timerOption TURN_TIMER_OPTIONS[TURN_TIMER_OPTIONS_COUNT] = {
+const int TURN_TIMER_OPTIONS_COUNT = 11;
+const timerOption TURN_TIMER_OPTIONS[TURN_TIMER_OPTIONS_COUNT] = {
   { { 7, 2, BLANK, BLANK, BLANK, BLANK }, 259201000UL },
   { { 4, 8, BLANK, BLANK, BLANK, BLANK }, 172801000UL },
   { { 2, 4, BLANK, BLANK, BLANK, BLANK }, 86401000UL },
@@ -94,9 +94,11 @@ timerOption TURN_TIMER_OPTIONS[TURN_TIMER_OPTIONS_COUNT] = {
   { { BLANK, BLANK, 1, 0, BLANK, BLANK }, 600000UL },
   { { BLANK, BLANK, 0, 5, BLANK, BLANK }, 300000UL },
   { { BLANK, BLANK, 0, 3, BLANK, BLANK }, 180000UL },
-  { { BLANK, BLANK, 0, 1, BLANK, BLANK }, 60000UL }
+  { { BLANK, BLANK, 0, 1, BLANK, BLANK }, 60000UL },
+  { { BLANK, BLANK, BLANK, BLANK, BLANK, 0 }, 0UL }
 };
 int currentTurnTimerOption = 2;
+
 
 /**
  * ============================
@@ -251,10 +253,16 @@ void loopCountdown(unsigned long loopNow) {
   unsigned long elapsedMS = loopNow - turnStartTimestampMS;
   unsigned long remainingMS = timeoutLimit - elapsedMS;
 
-  if (elapsedMS >= timeoutLimit) {
+  setButtonLEDs(leftPlayersTurn, !leftPlayersTurn);
+
+  if (timeoutLimit == 0UL) {
+    // when limit is special value 0, show elapsed time rather than remaining time
+    displayClockTime(elapsedMS);
+  } else if (elapsedMS >= timeoutLimit) {
+    // countdown expired, change state
     currentClockState = TIMEOUT;
   } else {
-    setButtonLEDs(leftPlayersTurn, !leftPlayersTurn);
+    // countdown running, show remaining time
     displayClockTime(remainingMS);
   }
 }

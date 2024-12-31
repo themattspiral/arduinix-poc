@@ -28,6 +28,7 @@ const int PIN_BUTTON_LEFT = A1;
 const int PIN_BUTTON_RIGHT_LED = A2;
 const int PIN_BUTTON_LEFT_LED = A3;
 const int PIN_BUTTON_UTILITY = A4;
+const int PIN_BUTTON_GROUND = A5;
 
 // 6 tubes, each wired to a unique combination of anode pin and cathode controller
 // TODO: IMPROVE THIS (no true/false)
@@ -42,7 +43,7 @@ const int BLANK = 15;
 
 // behavior constants
 const int IDLE_DELAY_MS = 2;
-const int MUX_SINGLE_TUBE_DELAY_US = 2500;  // 300µs - 3000µs is ideal for IN-2 tubes ( <300 ghosts, >3000 flickers )
+const int MUX_SINGLE_TUBE_DELAY_US = 500;   // 300-3000µs is ideal for IN-2 tubes, 100-1000µs for IN-12 tubes
 const int DEMO_STEP_DURATION_MS = 150;      // how fast to count up
 const int TIMEOUT_BLINK_DURATION_MS = 500;
 const int MENU_BLINK_DURATION_MS = 300;
@@ -143,6 +144,10 @@ void setup()
   pinMode(PIN_BUTTON_LEFT_LED, OUTPUT);
   digitalWrite(PIN_BUTTON_RIGHT_LED, LOW);
   digitalWrite(PIN_BUTTON_LEFT_LED, LOW);
+
+  // ground
+  pinMode(PIN_BUTTON_GROUND, OUTPUT);
+  digitalWrite(PIN_BUTTON_GROUND, LOW);
 }
 
 

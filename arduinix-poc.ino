@@ -1,6 +1,6 @@
 /**
  * ============================
- *    Hardware Definitions
+ *    Hardware & Data Definitions
  * ============================
  */
 
@@ -42,12 +42,26 @@ const bool TUBE_CATHODE_CTRL_0[TUBE_COUNT] = {false, true, false, true, false, t
 const int BLANK = 15;
 
 // behavior constants
-const int IDLE_DELAY_MS = 2;
 const int MUX_SINGLE_TUBE_DELAY_US = 500;   // 300-3000µs is ideal for IN-2 tubes, 100-1000µs for IN-12 tubes
-const int DEMO_STEP_DURATION_MS = 150;      // how fast to count up
+const int DEMO_STEP_DURATION_MS = 150;
 const int TIMEOUT_BLINK_DURATION_MS = 500;
 const int MENU_BLINK_DURATION_MS = 300;
 const int BUTTON_DEBOUNCE_DELAY_MS = 20;
+const int STATE_SEND_INTERVAL_MS = 1000;
+const int STATUS_CHUNK_LENGTH = 1;
+
+enum clockState { IDLE, RUNNING, TIMEOUT, MENU, DEMO };
+
+typedef struct {
+  int displayValues[TUBE_COUNT];
+  unsigned long turnLimitMS;
+  String label;
+} TurnTimerOption;
+
+typedef struct {
+  unsigned long elapsedMS;
+  unsigned long remainingMS;
+} CountdownValues;
 
 
 /**
@@ -55,10 +69,6 @@ const int BUTTON_DEBOUNCE_DELAY_MS = 20;
  *    Runtime State
  * ============================
  */
-
-// nixie tube demo state 🚥🚥
-int basicDemoTubeValue = 0;
-int muxDemo[TUBE_COUNT] = {0, 1, 2, 3, 4, 5};
 
 // button state 🔘🔘
 int rightButtonLastVal = HIGH;
@@ -71,32 +81,33 @@ unsigned long rightButtonLastDebounceMS = 0UL;
 unsigned long leftButtonLastDebounceMS = 0UL;
 unsigned long utilityButtonLastDebounceMS = 0UL;
 
+// nixie tube state 🚥🚥
+int mux[TUBE_COUNT] = {BLANK, BLANK, BLANK, BLANK, BLANK, BLANK};
+int lastDisplayRefreshTubeIndex = -1;
+unsigned long lastDisplayRefreshTimestampUs = 0UL;
+
 // chess clock state ♟⏲⏲♟
-enum clockState { IDLE, RUNNING, TIMEOUT, MENU, DEMO };
 clockState currentClockState = IDLE;
+unsigned long lastStateSendTimestampMs = 0UL;
 unsigned long lastEventStepTimestampMs = 0UL;
 unsigned long turnStartTimestampMS = 0UL;
 bool leftPlayersTurn = false;
 bool blinkOn = false;
-
-typedef struct {
-  int displayValues[TUBE_COUNT];
-  unsigned long turnLimitMS;
-} timerOption;
+String statusQueue = "";
 
 const int TURN_TIMER_OPTIONS_COUNT = 11;
-const timerOption TURN_TIMER_OPTIONS[TURN_TIMER_OPTIONS_COUNT] = {
-  { { 7, 2, BLANK, BLANK, BLANK, BLANK }, 259201000UL },
-  { { 4, 8, BLANK, BLANK, BLANK, BLANK }, 172801000UL },
-  { { 2, 4, BLANK, BLANK, BLANK, BLANK }, 86401000UL },
-  { { 0, 1, BLANK, BLANK, BLANK, BLANK }, 3601000UL },
-  { { BLANK, BLANK, 3, 0, BLANK, BLANK }, 1800000UL },
-  { { BLANK, BLANK, 1, 5, BLANK, BLANK }, 900000UL },
-  { { BLANK, BLANK, 1, 0, BLANK, BLANK }, 600000UL },
-  { { BLANK, BLANK, 0, 5, BLANK, BLANK }, 300000UL },
-  { { BLANK, BLANK, 0, 3, BLANK, BLANK }, 180000UL },
-  { { BLANK, BLANK, 0, 1, BLANK, BLANK }, 60000UL },
-  { { BLANK, BLANK, BLANK, BLANK, BLANK, 0 }, 0UL }
+const TurnTimerOption TURN_TIMER_OPTIONS[TURN_TIMER_OPTIONS_COUNT] = {
+  { { 7, 2, BLANK, BLANK, BLANK, BLANK }, 259201000UL, "72hr" },
+  { { 4, 8, BLANK, BLANK, BLANK, BLANK }, 172801000UL, "48hr" },
+  { { 2, 4, BLANK, BLANK, BLANK, BLANK }, 86401000UL, "24hr" },
+  { { 0, 1, BLANK, BLANK, BLANK, BLANK }, 3601000UL, "1hr" },
+  { { BLANK, BLANK, 3, 0, BLANK, BLANK }, 1800000UL, "30min" },
+  { { BLANK, BLANK, 1, 5, BLANK, BLANK }, 900000UL, "15min" },
+  { { BLANK, BLANK, 1, 0, BLANK, BLANK }, 600000UL, "10min" },
+  { { BLANK, BLANK, 0, 5, BLANK, BLANK }, 300000UL, "5min" },
+  { { BLANK, BLANK, 0, 3, BLANK, BLANK }, 180000UL, "3min" },
+  { { BLANK, BLANK, 0, 1, BLANK, BLANK }, 60000UL, "1min" },
+  { { BLANK, BLANK, BLANK, BLANK, BLANK, 0 }, 0UL, "elapsed" }
 };
 int currentTurnTimerOption = 2;
 
@@ -108,8 +119,7 @@ int currentTurnTimerOption = 2;
  */
 void setup() 
 {
-  // Serial.begin(9600);
-  // Serial.begin(115200);
+  Serial.begin(115200);
 
   pinMode(PIN_ANODE_1, OUTPUT);
   pinMode(PIN_ANODE_2, OUTPUT);
@@ -223,12 +233,30 @@ void setButtonLEDs(bool left, bool right) {
   digitalWrite(PIN_BUTTON_RIGHT_LED, right ? HIGH : LOW);
 }
 
-void multiplexDisplay(int t0, int t1, int t2, int t3, int t4, int t5) {
-  int clockTubeValues[] = {t0, t1, t2, t3, t4, t5};
+void setMux(int t0, int t1, int t2, int t3, int t4, int t5) {
+  mux[0] = t0;
+  mux[1] = t1;
+  mux[2] = t2;
+  mux[3] = t3;
+  mux[4] = t4;
+  mux[5] = t5;
+}
 
-  for (int i = 0; i < TUBE_COUNT; i++) {
-    displayOnTube(i, clockTubeValues[i]);
-    delayMicroseconds(MUX_SINGLE_TUBE_DELAY_US);
+void multiplex() {
+  unsigned long nowUs = micros();
+  unsigned long litForUs = nowUs - lastDisplayRefreshTimestampUs;
+
+  if (litForUs > MUX_SINGLE_TUBE_DELAY_US) {
+    // move onto next tube
+    if (lastDisplayRefreshTubeIndex == TUBE_COUNT - 1) {
+      lastDisplayRefreshTubeIndex = 0;
+    } else {
+      lastDisplayRefreshTubeIndex++;
+    }
+
+    displayOnTube(lastDisplayRefreshTubeIndex, mux[lastDisplayRefreshTubeIndex]);
+
+    lastDisplayRefreshTimestampUs = micros();
   }
 }
 
@@ -241,19 +269,19 @@ void displayClockTime(unsigned long turnTimeMS) {
   int fractionalSec = (turnTimeMS % 1000) / 10;
 
   if (hours > 0) {
-    multiplexDisplay(hours / 10, hours % 10, min / 10, min % 10, sec / 10, sec % 10);
+    setMux(hours / 10, hours % 10, min / 10, min % 10, sec / 10, sec % 10);
   } else if (min > 0) {
-    multiplexDisplay(min / 10, min % 10, sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10);
+    setMux(min / 10, min % 10, sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10);
   } else {
     if (leftPlayersTurn) {
-      multiplexDisplay(sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10, BLANK, BLANK);
+      setMux(sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10, BLANK, BLANK);
     } else {
-      multiplexDisplay(BLANK, BLANK, sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10);
+      setMux(BLANK, BLANK, sec / 10, sec % 10, fractionalSec / 10, fractionalSec % 10);
     }
   }
 }
 
-void loopCountdown(unsigned long loopNow) {
+CountdownValues loopCountdown(unsigned long loopNow) {
   unsigned long timeoutLimit = TURN_TIMER_OPTIONS[currentTurnTimerOption].turnLimitMS;
   unsigned long elapsedMS = loopNow - turnStartTimestampMS;
   unsigned long remainingMS = timeoutLimit - elapsedMS;
@@ -265,11 +293,14 @@ void loopCountdown(unsigned long loopNow) {
     displayClockTime(elapsedMS);
   } else if (elapsedMS >= timeoutLimit) {
     // countdown expired, change state
+    remainingMS = 0UL;
     currentClockState = TIMEOUT;
   } else {
     // countdown running, show remaining time
     displayClockTime(remainingMS);
   }
+
+  return { elapsedMS, remainingMS };
 }
 
 void loopTimeout(unsigned long loopNow) {
@@ -282,15 +313,15 @@ void loopTimeout(unsigned long loopNow) {
     if (leftPlayersTurn) {
       // left player timed out and lost
       setButtonLEDs(true, true);
-      multiplexDisplay(0, 0, 0, 0, BLANK, BLANK);
+      setMux(0, 0, 0, 0, BLANK, BLANK);
     } else {
       // right player timed out and lost
       setButtonLEDs(true, true);
-      multiplexDisplay( BLANK, BLANK, 0, 0, 0, 0);
+      setMux( BLANK, BLANK, 0, 0, 0, 0);
     }
   } else {
     setButtonLEDs(!leftPlayersTurn, leftPlayersTurn);
-    multiplexDisplay(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
+    setMux(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
   }
 }
 
@@ -302,7 +333,7 @@ void loopMenu(unsigned long loopNow) {
 
   if (blinkOn) {
     setButtonLEDs(true, true);
-    multiplexDisplay(
+    setMux(
       TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[0],
       TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[1],
       TURN_TIMER_OPTIONS[currentTurnTimerOption].displayValues[2],
@@ -312,32 +343,41 @@ void loopMenu(unsigned long loopNow) {
     );
   } else {
     setButtonLEDs(false, false);
-    multiplexDisplay(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
+    setMux(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
   }
 }
 
 void loopIdle() {
   setButtonLEDs(false, false);
-  multiplexDisplay(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
-
-  // kill some time
-  delay(IDLE_DELAY_MS);
+  setMux(BLANK, BLANK, BLANK, BLANK, BLANK, BLANK);
 }
 
 // multiplex couting up different values on each tube
 void loopCountMultiplexed(unsigned long loopNow) {
-  multiplexDisplay(muxDemo[0], muxDemo[1], muxDemo[2], muxDemo[3], muxDemo[4], muxDemo[5]);
-  
   if (loopNow - lastEventStepTimestampMs > DEMO_STEP_DURATION_MS) {
     lastEventStepTimestampMs = loopNow;
 
     for (int i = 0; i < TUBE_COUNT; i++) {
-      if (muxDemo[i] == 9) {
-        muxDemo[i] = 0;
+      if (mux[i] == 9) {
+        mux[i] = 0;
       } else {
-        muxDemo[i]++;
+        mux[i]++;
       }
     }
+  }
+}
+
+void loopEnqueueStatus(unsigned long loopNow, unsigned long elapsedMs, unsigned long remainingMs) {
+  if (loopNow - lastStateSendTimestampMs > STATE_SEND_INTERVAL_MS) {
+    lastStateSendTimestampMs = loopNow;
+    statusQueue += String(currentClockState) + "," + TURN_TIMER_OPTIONS[currentTurnTimerOption].label + "," + String(leftPlayersTurn) + "," + String(elapsedMs) + "," + String(remainingMs) + "\n";
+  }
+}
+
+void loopSendStatusChunk() {
+  if (statusQueue.length() > STATUS_CHUNK_LENGTH) {
+    Serial.print(statusQueue.substring(0, STATUS_CHUNK_LENGTH));
+    statusQueue = statusQueue.substring(STATUS_CHUNK_LENGTH);
   }
 }
 
@@ -451,10 +491,15 @@ void loopCheckButtons(unsigned long loopNow) {
  */
 void loop() {
   unsigned long now = millis();
+
+  // check for button presses and change state if needed
   loopCheckButtons(now);
 
+  CountdownValues cv = { 0UL, 0UL };
+
+  // update values to display based on current state
   if (currentClockState == RUNNING) {
-    loopCountdown(now);
+    cv = loopCountdown(now);
   } else if (currentClockState == TIMEOUT) {
     loopTimeout(now);
   } else if (currentClockState == MENU) {
@@ -464,26 +509,14 @@ void loop() {
   } else if (currentClockState == IDLE) {
     loopIdle();
   }
+
+  // display current values
+  multiplex();
+
+  // add new status update to queue to be sent on an interval
+  loopEnqueueStatus(now, cv.elapsedMS, cv.remainingMS);
+
+  // send a predictable chunk of queued status updates so that it continues to
+  // transmit data without introducing large enough delay to cause tube flicker
+  loopSendStatusChunk();
 }
-
-// basic count up - same value on all tubes
-// void loopCountBasic(unsigned long loopNow) {
-//   if (loopNow - lastEventStepTimestampMs > DEMO_STEP_DURATION_MS) {
-//     lastEventStepTimestampMs = loopNow;
-
-//     if (basicDemoTubeValue == 9) {
-//       basicDemoTubeValue = 0;
-//     } else {
-//       basicDemoTubeValue++;
-//     }
-        
-//     digitalWrite(PIN_ANODE_1, HIGH);
-//     digitalWrite(PIN_ANODE_2, HIGH);
-//     digitalWrite(PIN_ANODE_3, HIGH);
-
-//     setCathode(true, basicDemoTubeValue);
-//     setCathode(false, basicDemoTubeValue);
-//   }
-
-//   delay(2);
-// }
